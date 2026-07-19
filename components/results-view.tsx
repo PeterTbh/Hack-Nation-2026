@@ -207,14 +207,13 @@ function EvidenceDialog({
                   </div>
                   <p className="shrink-0 font-semibold">{formatMoney(node.totalPrice, node.currency)}</p>
                 </div>
-                {node.live && (
+                {node.live && (node.maxTotalPrice || node.alsoMentioned) && (
                   <p className="text-xs text-muted-foreground">
                     {[
-                      node.transitDays ? `Transit ${node.transitDays} days` : null,
-                      node.nextSailing ? `Next sailing ${node.nextSailing}` : null,
-                      node.freeDays ? `Free days: ${node.freeDays}` : null,
-                      node.paymentTerms ? `Payment: ${node.paymentTerms}` : null,
-                      `Binding: ${node.binding ? "yes" : "no"}`,
+                      node.maxTotalPrice
+                        ? `Worst case: ${formatMoney(node.maxTotalPrice, node.currency)}${node.maxPriceDrivers ? ` (${node.maxPriceDrivers})` : ""}`
+                        : null,
+                      node.alsoMentioned ?? null,
                     ]
                       .filter(Boolean)
                       .join(" · ")}

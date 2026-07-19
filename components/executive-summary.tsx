@@ -24,12 +24,12 @@ export function ExecutiveSummary({ report }: { report: NegotiationReport }) {
   ]
   if (liveNode) {
     obtained.push(
-      `Live-negotiated ${nodeTypeLabels[liveNode.nodeType].toLowerCase()} quote from ${liveNode.counterparty}: ${formatMoney(liveNode.totalPrice, liveNode.currency)}.`
+      `Live-negotiated ${nodeTypeLabels[liveNode.nodeType].toLowerCase()} quote from ${liveNode.counterparty}: ${formatMoney(liveNode.totalPrice, liveNode.currency)} realistic all-in.`
     )
-    if (liveNode.transitDays) obtained.push(`Confirmed transit time: ${liveNode.transitDays} days.`)
-    if (liveNode.paymentTerms) obtained.push(`Confirmed payment terms: ${liveNode.paymentTerms}.`)
-    if (liveNode.freeDays) obtained.push(`Confirmed free days: ${liveNode.freeDays}.`)
-    obtained.push(`Quote is ${liveNode.binding ? "" : "not "}binding.`)
+    if (liveNode.negotiatedImprovement) {
+      obtained.push(`Negotiated improvement: ${liveNode.negotiatedImprovement}.`)
+    }
+    if (liveNode.alsoMentioned) obtained.push(`Also volunteered by the vendor: ${liveNode.alsoMentioned}.`)
   } else {
     obtained.push("Every figure below is simulated — no live vendor call has been completed for this shipment yet.")
   }
@@ -37,10 +37,10 @@ export function ExecutiveSummary({ report }: { report: NegotiationReport }) {
   const missing: string[] = []
   if (!liveNode) {
     missing.push("No live-negotiated quote yet — every number is a simulated estimate, not a confirmed vendor rate.")
-  } else {
-    if (!liveNode.transitDays) missing.push(`Transit time not confirmed by ${liveNode.counterparty}.`)
-    if (!liveNode.paymentTerms) missing.push(`Payment terms not confirmed by ${liveNode.counterparty}.`)
-    if (!liveNode.freeDays) missing.push(`Free days not confirmed by ${liveNode.counterparty}.`)
+  } else if (liveNode.maxTotalPrice) {
+    missing.push(
+      `Rate isn't locked — could run up to ${formatMoney(liveNode.maxTotalPrice, liveNode.currency)}${liveNode.maxPriceDrivers ? ` if ${liveNode.maxPriceDrivers}` : ""}.`
+    )
   }
   missing.push(...missingFromCalls.map((m) => `${m.item} (${m.counterparty})`))
 
