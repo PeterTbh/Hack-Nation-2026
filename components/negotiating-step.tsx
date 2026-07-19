@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import type { CallResult, NegotiationReport } from "@/lib/types"
 import { formatMoney, nodeTypeLabels } from "@/lib/format"
+import { USD_TO_EUR } from "@/lib/merge-live-result"
 import { useCountdownPrice } from "@/hooks/use-countdown-price"
 import { LiveResultSummary } from "@/components/live-result-summary"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -44,6 +45,10 @@ function useSimulatedCalls(nodeIds: string[]) {
   return stages
 }
 
+function nodeEur(node: CallResult): number {
+  return node.currency === "USD" ? Math.round(node.totalPrice * USD_TO_EUR) : node.totalPrice
+}
+
 export function NegotiatingStep({
   report,
   onComplete,
@@ -53,14 +58,16 @@ export function NegotiatingStep({
 }) {
   const spec = report.productSpec
   const allNodes = report.paths.flatMap((p) => p.nodes)
-  // The live-negotiated node (if any) was already merged into the report and
-  // is shown once, pinned above — the remaining nodes animate as simulated
-  // calls that build on top of it.
   const liveNode = allNodes.find((n) => n.live)
-  const nodes = allNodes.filter((n) => !n.live)
-  const stages = useSimulatedCalls(nodes.map((n) => n.id))
+  const simNodes = allNodes.filter((n) => !n.live)
+  const stages = useSimulatedCalls(simNodes.map((n) => n.id))
+  const stageById = new Map(simNodes.map((n, i) => [n.id, stages[i]] as const))
   const allDone = stages.every((s) => s === "done")
   const doneCount = stages.filter((s) => s === "done").length
+
+  // Same ordering as the Results ranking table — cheapest landed cost first —
+  // so what completes here maps row-for-row onto the next screen.
+  const orderedPaths = [...report.paths].sort((a, b) => a.landedCostEur - b.landedCostEur)
 
   return (
     <div className="flex flex-col gap-6">
@@ -68,17 +75,47 @@ export function NegotiatingStep({
         <h1 className="text-2xl font-semibold tracking-tight">Negotiating the remaining legs</h1>
         <p className="text-muted-foreground">
           {liveNode
-            ? `Using the live quote as reference while the agent negotiates the rest of ${spec.productName}'s route — ${doneCount}/${nodes.length} calls complete.`
-            : `Calling every remaining provider for ${spec.productName} — ${doneCount}/${nodes.length} calls complete.`}
+            ? `Using the live quote as the anchor while the agent negotiates each candidate route for ${spec.productName} — ${doneCount}/${simNodes.length} calls complete.`
+            : `Calling every remaining provider for ${spec.productName} — ${doneCount}/${simNodes.length} calls complete.`}
         </p>
       </div>
 
       {liveNode && <LiveResultSummary result={liveNode} label="From your live call" />}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {nodes.map((node, i) => (
-          <CallCard key={node.id} node={node} status={stages[i]} />
-        ))}
+      <div className="flex flex-col gap-8">
+        {orderedPaths.map((path) => {
+          const pathDone = path.nodes.every((n) => n.live || stageById.get(n.id) === "done")
+          const logisticsCost = path.nodes.reduce((sum, n) => sum + nodeEur(n), 0)
+          return (
+            <section key={path.id} className="space-y-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="flex items-center gap-2 text-sm font-medium">
+                  {path.label}
+                  {pathDone && path.recommended && (
+                    <Badge className="bg-brand text-brand-foreground">Recommended</Badge>
+                  )}
+                </h2>
+                {pathDone ? (
+                  <span className="text-sm text-muted-foreground">
+                    Logistics {formatMoney(logisticsCost)} · Landed{" "}
+                    <span className="font-semibold text-foreground">{formatMoney(path.landedCostEur)}</span>
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Calls in progress…</span>
+                )}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {path.nodes.map((node) => (
+                  <CallCard
+                    key={node.id}
+                    node={node}
+                    status={node.live ? "done" : (stageById.get(node.id) ?? "done")}
+                  />
+                ))}
+              </div>
+            </section>
+          )
+        })}
       </div>
 
       <div className="flex justify-end">
@@ -106,11 +143,19 @@ function CallCard({ node, status }: { node: CallResult; status: SimStatus }) {
   )
 
   return (
-    <Card className={cn(isDone && hasRedFlags && "ring-1 ring-destructive/50")}>
+    <Card
+      className={cn(
+        isDone && hasRedFlags && "ring-1 ring-destructive/50",
+        node.live && "ring-1 ring-brand/50"
+      )}
+    >
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base font-medium">
           <StatusDot status={status} hasRedFlags={isDone && hasRedFlags} />
-          {node.counterparty}
+          <span className="truncate">{node.counterparty}</span>
+          {node.live && (
+            <Badge className="shrink-0 bg-brand text-brand-foreground">Live</Badge>
+          )}
         </CardTitle>
         <CardDescription>{nodeTypeLabels[node.nodeType]}</CardDescription>
       </CardHeader>

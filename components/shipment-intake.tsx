@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import type { CompetingQuote, ProductSpec } from "@/lib/types"
+import { parseCompetingQuoteText } from "@/lib/parse-competing-quote"
 import { VoiceIntakeCard } from "@/components/voice-intake-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -421,9 +422,48 @@ function CompetingQuoteRow({
   quote: QuoteForm
   updateQuote: (which: "quoteA" | "quoteB", key: keyof QuoteForm, value: string) => void
 }) {
+  const [pasteText, setPasteText] = useState("")
+  const [parseError, setParseError] = useState(false)
+
+  function handleParse() {
+    const parsed = parseCompetingQuoteText(pasteText)
+    if (!parsed) {
+      setParseError(true)
+      return
+    }
+    setParseError(false)
+    if (parsed.vendor) updateQuote(which, "vendor", parsed.vendor)
+    if (parsed.amountUsd) updateQuote(which, "amountUsd", parsed.amountUsd)
+    if (parsed.allIn) updateQuote(which, "allIn", parsed.allIn)
+    if (parsed.extras) updateQuote(which, "extras", parsed.extras)
+    if (parsed.transitDays) updateQuote(which, "transitDays", parsed.transitDays)
+    if (parsed.freeDays) updateQuote(which, "freeDays", parsed.freeDays)
+  }
+
   return (
     <div className="grid gap-3 rounded-lg border border-border p-3">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
+
+      <div className="flex gap-2">
+        <Input
+          value={pasteText}
+          onChange={(e) => {
+            setPasteText(e.target.value)
+            setParseError(false)
+          }}
+          placeholder="Paste the quote as you received it, e.g. &quot;OceanLine quoted 2650 USD all-in, 32 days transit, 7 free days&quot;"
+          className="text-xs"
+        />
+        <Button type="button" size="sm" variant="secondary" onClick={handleParse} disabled={!pasteText.trim()}>
+          Parse
+        </Button>
+      </div>
+      {parseError && (
+        <p className="text-xs text-destructive">
+          Couldn&apos;t find a rate in that text — fill in the fields below manually instead.
+        </p>
+      )}
+
       <div className="grid grid-cols-6 gap-3">
         <div className="col-span-2 grid gap-1.5">
           <Label htmlFor={`${which}-vendor`}>Vendor</Label>
