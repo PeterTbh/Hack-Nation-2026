@@ -1,8 +1,15 @@
-// Mints a short-lived WebRTC conversation token for the ElevenLabs shipping
-// negotiator agent. Runs server-side only so the API key never reaches the
-// browser.
+// Mints a short-lived WebRTC conversation token for one of the ElevenLabs
+// agents (the transport negotiator or the intake secretary). Runs server-side
+// only so the API key never reaches the browser.
 
-export async function GET() {
+type AgentKey = "transport" | "intake"
+
+const AGENT_ENV_VAR: Record<AgentKey, string> = {
+  transport: "ELEVENLABS_AGENT_ID_TRANSPORT",
+  intake: "ELEVENLABS_AGENT_ID_INTAKE",
+}
+
+export async function GET(request: Request) {
   const apiKey = process.env.ELEVENLABS_API_KEY
   if (!apiKey || apiKey === "PASTE_YOUR_KEY_HERE") {
     return Response.json(
@@ -11,12 +18,15 @@ export async function GET() {
     )
   }
 
-  const agentId = process.env.ELEVENLABS_AGENT_ID_TRANSPORT
+  const agentParam = (new URL(request.url).searchParams.get("agent") ?? "transport") as AgentKey
+  const envVar = AGENT_ENV_VAR[agentParam]
+  if (!envVar) {
+    return Response.json({ error: `Unknown agent "${agentParam}"` }, { status: 400 })
+  }
+
+  const agentId = process.env[envVar]
   if (!agentId) {
-    return Response.json(
-      { error: "ELEVENLABS_AGENT_ID_TRANSPORT is not configured in .env.local" },
-      { status: 500 }
-    )
+    return Response.json({ error: `${envVar} is not configured in .env.local` }, { status: 500 })
   }
 
   const res = await fetch(

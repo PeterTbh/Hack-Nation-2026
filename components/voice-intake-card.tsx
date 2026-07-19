@@ -3,14 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Mic, MicOff, Phone, PhoneOff } from "lucide-react"
 import { ConversationProvider, useConversation } from "@elevenlabs/react"
-import type { CallResult, ProductSpec } from "@/lib/types"
-import { buildDynamicVariables } from "@/lib/elevenlabs"
+import type { ProductSpec } from "@/lib/types"
 import {
-  parseFromDataCollection,
-  parseQuoteSummary,
+  parseIntakeFromDataCollection,
+  parseIntakeSummary,
   type DataCollectionResults,
-  type TranscriptLine,
-} from "@/lib/parse-quote-summary"
+  type IntakeTranscriptLine,
+} from "@/lib/parse-intake-summary"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,79 +17,85 @@ import { cn } from "@/lib/utils"
 
 type CallPhase = "idle" | "connecting" | "active" | "ended" | "error"
 
-interface LiveCallCardProps {
-  spec: ProductSpec
-  onResult: (result: CallResult | null, transcript: TranscriptLine[]) => void
+interface VoiceIntakeCardProps {
+  onResult: (spec: Partial<ProductSpec> | null) => void
   onCallStateChange?: (inProgress: boolean) => void
 }
 
-export function LiveCallCard(props: LiveCallCardProps) {
+// Wraps arbitrary client-tool call parameters in the same { key: { value } }
+// shape as ElevenLabs' Data Collection results, so both mechanisms can reuse
+// the one field-mapping function (parseIntakeFromDataCollection).
+function toDataCollectionShape(params: Record<string, unknown>): DataCollectionResults {
+  const out: DataCollectionResults = {}
+  for (const [key, value] of Object.entries(params ?? {})) out[key] = { value }
+  return out
+}
+
+export function VoiceIntakeCard(props: VoiceIntakeCardProps) {
   return (
     <ConversationProvider>
-      <LiveCallCardInner {...props} />
+      <VoiceIntakeCardInner {...props} />
     </ConversationProvider>
   )
 }
 
-function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardProps) {
+function VoiceIntakeCardInner({ onResult, onCallStateChange }: VoiceIntakeCardProps) {
   const [phase, setPhase] = useState<CallPhase>("idle")
   const [error, setError] = useState<string | null>(null)
-  const [transcript, setTranscript] = useState<TranscriptLine[]>([])
+  const [transcript, setTranscript] = useState<IntakeTranscriptLine[]>([])
   const [seconds, setSeconds] = useState(0)
   const [parseState, setParseState] = useState<"pending" | "parsed" | "failed" | null>(null)
-  const transcriptRef = useRef<TranscriptLine[]>([])
+  const transcriptRef = useRef<IntakeTranscriptLine[]>([])
   const conversationIdRef = useRef<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Set the instant the agent calls the submit_shipment_spec tool — the most
+  // reliable path, since it doesn't depend on the agent reciting an exact
+  // spoken sentence. When set, the transcript/summary fallback in
+  // finalizeCall is skipped entirely.
+  const toolSpecRef = useRef<Partial<ProductSpec> | null>(null)
 
-  // The live stream can miss the agent's final message (or the agent can end
-  // the call right as it speaks the summary), so if the local transcript has
-  // no QUOTE SUMMARY we re-fetch the authoritative transcript from ElevenLabs
-  // — it takes a few seconds to become available after the call ends.
+  // Mirrors LiveCallCard's finalizeCall: the live stream can miss the agent's
+  // final message, so fall back to re-fetching the authoritative transcript.
   async function finalizeCall() {
-    const fallbackName = spec.counterpartyName ?? "Vendor"
-    const local = parseQuoteSummary(transcriptRef.current, fallbackName)
+    if (toolSpecRef.current) return
+    const local = parseIntakeSummary(transcriptRef.current)
     if (local) {
       setParseState("parsed")
-      onResult(local, transcriptRef.current)
+      onResult(local)
       return
     }
 
     setParseState("pending")
     const id = conversationIdRef.current
     if (id) {
-      // Two fallback layers, both from the ElevenLabs API: (1) the
-      // authoritative transcript may contain a summary the live stream
-      // missed; (2) post-call data collection extracts the quote fields from
-      // the whole conversation even when no summary was ever spoken. The
-      // analysis can take ~10-20s after call end, so keep polling.
       for (let attempt = 0; attempt < 6; attempt++) {
         await new Promise((r) => setTimeout(r, attempt === 0 ? 2500 : 4000))
         try {
           const res = await fetch(`/api/conversations/${id}`)
           if (!res.ok) continue
           const data = await res.json()
-          const lines: TranscriptLine[] = ((data.transcript ?? []) as { role: string; message: string | null }[])
+          const lines: IntakeTranscriptLine[] = ((data.transcript ?? []) as { role: string; message: string | null }[])
             .filter((t) => t.message)
-            .map((t) => ({ role: t.role === "agent" ? "agent" : "vendor", text: t.message as string }))
+            .map((t) => ({ role: t.role === "agent" ? "agent" : "user", text: t.message as string }))
           if (lines.length > transcriptRef.current.length) {
             transcriptRef.current = lines
             setTranscript(lines)
           }
-          const parsed = parseQuoteSummary(lines, fallbackName)
+          const parsed = parseIntakeSummary(lines)
           if (parsed) {
             setParseState("parsed")
-            onResult(parsed, lines)
+            onResult(parsed)
             return
           }
           const dcResults = data.analysis?.data_collection_results as DataCollectionResults | undefined
           if (dcResults && Object.keys(dcResults).length > 0) {
-            const extracted = parseFromDataCollection(dcResults, fallbackName)
+            const extracted = parseIntakeFromDataCollection(dcResults)
             if (extracted) {
               setParseState("parsed")
-              onResult(extracted, transcriptRef.current)
+              onResult(extracted)
               return
             }
-            break // analysis is in and holds no usable quote — stop waiting
+            break // analysis is in and holds no usable spec — stop waiting
           }
         } catch {
           // transient — retry
@@ -98,12 +103,29 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
       }
     }
     setParseState("failed")
-    onResult(null, transcriptRef.current)
+    onResult(null)
   }
 
   const conversation = useConversation({
+    // Primary mechanism: the agent calls this tool once it has gathered every
+    // field, passing structured parameters directly — no transcript parsing
+    // needed. Requires a matching Client Tool named "submit_shipment_spec" to
+    // be configured on the agent in the ElevenLabs dashboard (see
+    // agent/intake-prompt.md).
+    clientTools: {
+      submit_shipment_spec: (params: Record<string, unknown>) => {
+        const spec = parseIntakeFromDataCollection(toDataCollectionShape(params))
+        if (!spec) {
+          return "Missing required fields (product, origin, or destination) — please ask again before calling this tool."
+        }
+        toolSpecRef.current = spec
+        setParseState("parsed")
+        onResult(spec)
+        return "Shipment spec captured."
+      },
+    },
     onMessage: ({ message, source }) => {
-      const line: TranscriptLine = { role: source === "ai" ? "agent" : "vendor", text: message }
+      const line: IntakeTranscriptLine = { role: source === "ai" ? "agent" : "user", text: message }
       transcriptRef.current = [...transcriptRef.current, line]
       setTranscript(transcriptRef.current)
     },
@@ -114,15 +136,13 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
     onDisconnect: () => {
       setPhase("ended")
       onCallStateChange?.(false)
-      void finalizeCall()
+      if (!toolSpecRef.current) void finalizeCall()
     },
     onError: (message) => {
       setError(message)
       setPhase("error")
       onCallStateChange?.(false)
-      // Guarantee forward progress: without this, a connection error would
-      // leave the wrapping step waiting forever for a result that never comes.
-      onResult(null, transcriptRef.current)
+      if (!toolSpecRef.current) onResult(null)
     },
   })
 
@@ -143,25 +163,24 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
     setParseState(null)
     transcriptRef.current = []
     conversationIdRef.current = null
+    toolSpecRef.current = null
     setTranscript([])
     onCallStateChange?.(true)
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true })
-      const res = await fetch("/api/conversation-token?agent=transport")
+      const res = await fetch("/api/conversation-token?agent=intake")
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? "Failed to get conversation token")
       conversation.startSession({
         conversationToken: body.token,
         connectionType: "webrtc",
-        dynamicVariables: buildDynamicVariables(spec),
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start the call")
       setPhase("error")
       onCallStateChange?.(false)
     }
-  }, [conversation, spec, onCallStateChange])
-
+  }, [conversation, onCallStateChange])
 
   return (
     <Card className="border-brand/40">
@@ -169,7 +188,7 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
         <CardTitle className="flex items-center justify-between gap-2 text-base font-medium">
           <span className="flex items-center gap-2">
             <PhaseDot phase={phase} isSpeaking={conversation.isSpeaking} />
-            Live call — {spec.counterpartyName ?? "Vendor"}
+            Voice intake
           </span>
           {phase === "active" && (
             <span className="text-sm font-normal tabular-nums text-muted-foreground">
@@ -178,14 +197,14 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
           )}
         </CardTitle>
         <CardDescription>
-          Emma negotiates the transport quote with {spec.counterpartyType ?? "the vendor"} — you
-          answer through your microphone as the vendor&apos;s booking desk.
+          Describe the shipment out loud — the assistant asks one question at a time and fills the
+          form below for you to review.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         {phase === "active" && (
           <Badge variant="outline" className="border-brand/40 text-brand">
-            {conversation.isSpeaking ? "Emma is speaking…" : "Emma is listening…"}
+            {conversation.isSpeaking ? "Assistant is speaking…" : "Assistant is listening…"}
           </Badge>
         )}
 
@@ -193,7 +212,7 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
           <div ref={scrollRef} className="max-h-56 space-y-2 overflow-y-auto rounded-md bg-muted/50 p-3">
             {transcript.map((line, i) => (
               <p key={i} className={cn("text-xs", line.role === "agent" ? "text-foreground" : "text-muted-foreground")}>
-                <span className="font-medium">{line.role === "agent" ? "Emma" : spec.counterpartyName ?? "Vendor"}:</span>{" "}
+                <span className="font-medium">{line.role === "agent" ? "Assistant" : "You"}:</span>{" "}
                 {line.text}
               </p>
             ))}
@@ -207,10 +226,10 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
               parseState === "parsed" ? "text-brand" : parseState === "pending" ? "text-muted-foreground" : "text-warn"
             )}
           >
-            {parseState === "parsed" && "Call complete — quote summary captured and parsed into the results."}
-            {parseState === "pending" && "Call ended — extracting the quote from the transcript (takes ~10-20s)…"}
+            {parseState === "parsed" && "Spec captured — review the fields below before starting."}
+            {parseState === "pending" && "Call ended — extracting the spec from the transcript…"}
             {parseState === "failed" &&
-              "Call ended without a QUOTE SUMMARY — no structured quote could be extracted. You can call again."}
+              "Couldn't extract a complete spec from that call — fill in or correct the fields below manually."}
           </p>
         )}
         {error && <p className="text-xs text-destructive">⚠ {error}</p>}
@@ -219,7 +238,7 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
           {phase === "idle" || phase === "ended" || phase === "error" ? (
             <Button size="sm" onClick={startCall}>
               <Phone className="mr-1.5 h-3.5 w-3.5" />
-              {phase === "idle" ? "Start call" : "Call again"}
+              {phase === "idle" ? "Start voice intake" : "Try again"}
             </Button>
           ) : (
             <>

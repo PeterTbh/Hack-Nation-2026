@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import type { CompetingQuote, ProductSpec } from "@/lib/types"
+import { VoiceIntakeCard } from "@/components/voice-intake-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 
 // Fixed for this demo — the agent ("Emma") always calls the same freight
 // forwarder persona, so who to call isn't a user decision.
@@ -97,6 +99,7 @@ function toCompetingQuote(q: QuoteForm): CompetingQuote | null {
 }
 
 export function ShipmentIntake({ onSubmit }: { onSubmit: (spec: ProductSpec) => void }) {
+  const [intakeMode, setIntakeMode] = useState<"manual" | "voice">("manual")
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [error, setError] = useState<string | null>(null)
 
@@ -106,6 +109,29 @@ export function ShipmentIntake({ onSubmit }: { onSubmit: (spec: ProductSpec) => 
 
   function updateQuote(which: "quoteA" | "quoteB", key: keyof QuoteForm, value: string) {
     setForm((prev) => ({ ...prev, [which]: { ...prev[which], [key]: value } }))
+  }
+
+  // The voice intake agent hands back a partial spec, which pre-fills the
+  // same form below — the user still reviews and confirms every field before
+  // "Start Negotiation" is ever clickable, same as the manual path.
+  function handleVoiceResult(spec: Partial<ProductSpec> | null) {
+    if (!spec) return
+    setForm((prev) => ({
+      ...prev,
+      productName: spec.productName ?? prev.productName,
+      origin: spec.origin ?? prev.origin,
+      destination: spec.destination ?? prev.destination,
+      weightKg: spec.weightKg ? String(spec.weightKg) : prev.weightKg,
+      palletCount: spec.palletCount ? String(spec.palletCount) : prev.palletCount,
+      cargoValueEur: spec.cargoValueEur ? String(spec.cargoValueEur) : prev.cargoValueEur,
+      readyDate: spec.readyDate ?? prev.readyDate,
+      clientName: spec.clientName ?? prev.clientName,
+      cargoDescription: spec.cargoDescription ?? prev.cargoDescription,
+      latestArrivalDate: spec.latestArrivalDate ?? prev.latestArrivalDate,
+      paymentTerms: spec.paymentTerms ?? prev.paymentTerms,
+      benchmarkRateUsd: spec.benchmarkRateUsd ? String(spec.benchmarkRateUsd) : prev.benchmarkRateUsd,
+      typicalTransitDays: spec.typicalTransitDays ?? prev.typicalTransitDays,
+    }))
   }
 
   function handleSubmit() {
@@ -172,7 +198,28 @@ export function ShipmentIntake({ onSubmit }: { onSubmit: (spec: ProductSpec) => 
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid gap-4">
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={intakeMode === "manual" ? "default" : "outline"}
+            onClick={() => setIntakeMode("manual")}
+          >
+            Manual form
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={intakeMode === "voice" ? "default" : "outline"}
+            onClick={() => setIntakeMode("voice")}
+          >
+            🎙 Voice intake
+          </Button>
+        </div>
+
+        {intakeMode === "voice" && <VoiceIntakeCard onResult={handleVoiceResult} />}
+
+        <div className={cn("grid gap-4", intakeMode === "voice" && "border-t pt-4")}>
           <div className="grid gap-1.5">
             <Label htmlFor="productName">Product name</Label>
             <Input
