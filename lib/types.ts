@@ -8,6 +8,21 @@ export type Incoterm = "EXW" | "FOB" | "CIF" | "DDP" | "FCA"
 // relevant on the intake form and which node types appear downstream.
 export type NegotiationMode = "sourcing" | "transport" | "sourcing_transport"
 
+export type ContainerType = "20ft" | "40ft" | "40ft HC" | "LCL"
+
+// A real quote we already hold from another vendor. Under the agent's honesty
+// rules these are the ONLY competing numbers it may cite on a call, so they
+// must be entered accurately — never invented.
+export interface CompetingQuote {
+  vendor: string
+  amountUsd: number
+  allIn: boolean // true = all-in; false = base rate with extras billed on top
+  extras?: string // e.g. "plus destination THC USD 280 and documentation USD 95"
+  transitDays?: number
+  freeDays?: number
+  validityDays?: number
+}
+
 export interface ProductSpec {
   id: string
   mode: NegotiationMode
@@ -21,6 +36,21 @@ export interface ProductSpec {
   origin?: string
   destination?: string
   incoterm?: Incoterm
+
+  // transport only — context the live voice agent needs to open, negotiate,
+  // and red-flag realistically. Optional so curated mock specs stay valid.
+  clientName?: string
+  language?: string
+  cargoDescription?: string // incl. non-hazardous confirmation
+  containerType?: ContainerType
+  cartonCount?: number
+  latestArrivalDate?: string // ISO date — hard arrival deadline at destination
+  paymentTerms?: string
+  counterpartyName?: string // who the agent is calling
+  counterpartyType?: string // freight forwarder / carrier booking desk / NVOCC
+  benchmarkRateUsd?: number // market all-in benchmark; red-flag floor = 70% of it
+  typicalTransitDays?: string // e.g. "30–33 days"
+  competingQuotes?: CompetingQuote[]
 
   // sourcing_transport only (final delivery point; origin is left open on
   // purpose — the agent evaluates sourcing options and their shipping together)
@@ -71,6 +101,15 @@ export interface CallResult {
   redFlags: string[]
   negotiationDelta: NegotiationDelta
   transcriptQuotes: string[]
+
+  // Populated when the node was negotiated by the live voice agent (parsed
+  // from its closing QUOTE SUMMARY); absent on mock/simulated nodes.
+  transitDays?: number
+  nextSailing?: string
+  freeDays?: string // e.g. "7 demurrage / 5 detention"
+  paymentTerms?: string
+  missingInformation?: string[] // items the vendor couldn't provide + plausibility judgement
+  live?: boolean
 }
 
 export interface SupplyChainPath {

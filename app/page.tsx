@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import type { ProductSpec } from "@/lib/types"
+import type { NegotiationReport, ProductSpec } from "@/lib/types"
 import { getReportForSpec, productSpecs } from "@/lib/mockData"
 import { SpecSelect } from "@/components/spec-select"
 import { LiveView } from "@/components/live-view"
@@ -10,18 +10,23 @@ import { Stepper, type StepKey } from "@/components/stepper"
 
 export default function Home() {
   const [step, setStep] = useState<StepKey>("select")
-  const [spec, setSpec] = useState<ProductSpec | null>(null)
+  const [report, setReport] = useState<NegotiationReport | null>(null)
 
-  const report = spec ? getReportForSpec(spec) : undefined
-
-  function handleStart(nextSpec: ProductSpec) {
-    setSpec(nextSpec)
+  function handleStart(spec: ProductSpec) {
+    setReport(getReportForSpec(spec))
     setStep("live")
+  }
+
+  // The live view returns the report enriched with any real negotiated
+  // quote (live ElevenLabs call) merged into the paths.
+  function handleLiveComplete(finalReport: NegotiationReport) {
+    setReport(finalReport)
+    setStep("results")
   }
 
   function handleRestart() {
     setStep("select")
-    setSpec(null)
+    setReport(null)
   }
 
   return (
@@ -31,9 +36,7 @@ export default function Home() {
       </div>
 
       {step === "select" && <SpecSelect specs={productSpecs} onStart={handleStart} />}
-      {step === "live" && report && (
-        <LiveView report={report} onComplete={() => setStep("results")} />
-      )}
+      {step === "live" && report && <LiveView report={report} onComplete={handleLiveComplete} />}
       {step === "results" && report && <ResultsView report={report} onRestart={handleRestart} />}
     </main>
   )

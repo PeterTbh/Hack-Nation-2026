@@ -200,11 +200,36 @@ function EvidenceDialog({
               <div key={node.id} className="space-y-2 border-b pb-4 last:border-b-0 last:pb-0">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium">{node.counterparty}</p>
+                    <p className="flex items-center gap-2 font-medium">
+                      {node.counterparty}
+                      {node.live && (
+                        <Badge className="bg-brand text-brand-foreground">Live negotiated</Badge>
+                      )}
+                    </p>
                     <p className="text-xs text-muted-foreground">{nodeTypeLabels[node.nodeType]}</p>
                   </div>
                   <p className="shrink-0 font-semibold">{formatMoney(node.totalPrice, node.currency)}</p>
                 </div>
+                {node.live && (
+                  <p className="text-xs text-muted-foreground">
+                    {[
+                      node.transitDays ? `Transit ${node.transitDays} days` : null,
+                      node.nextSailing ? `Next sailing ${node.nextSailing}` : null,
+                      node.freeDays ? `Free days: ${node.freeDays}` : null,
+                      node.paymentTerms ? `Payment: ${node.paymentTerms}` : null,
+                      `Binding: ${node.binding ? "yes" : "no"}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                )}
+                {node.missingInformation && node.missingInformation.length > 0 && (
+                  <div className="space-y-1 rounded-md bg-warn/10 p-2 text-xs text-warn">
+                    {node.missingInformation.map((item) => (
+                      <p key={item}>? Missing: {item}</p>
+                    ))}
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   {node.lineItems.map((item) => (
                     <Badge key={item.label} variant={item.included ? "secondary" : "outline"} className="font-normal">

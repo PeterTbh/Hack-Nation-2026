@@ -5,6 +5,50 @@
 import type { CallResult, NegotiationReport, ProductSpec, SupplyChainPath } from "@/lib/types"
 
 export const productSpecs: ProductSpec[] = [
+  // Live-call ready: matches the ElevenLabs shipping agent's demo scenario.
+  // No curated report — the synthetic generator supplies the comparison
+  // paths, and the real negotiated ocean quote is merged in after the call.
+  {
+    id: "bottles-live-1",
+    mode: "transport",
+    productName: "Stainless-Steel Drinking Bottles",
+    origin: "Port of Shenzhen (Yantian), China",
+    destination: "Port of Hamburg, Germany",
+    weightKg: 9500,
+    palletCount: 20,
+    cargoValueEur: 62000,
+    readyDate: "2026-09-01",
+    incoterm: "FOB",
+    clientName: "Northvolt Trading GmbH",
+    counterpartyName: "OceanLine Forwarding",
+    counterpartyType: "freight forwarder",
+    cargoDescription: "consumer goods, stainless-steel drinking bottles, non-hazardous",
+    containerType: "40ft",
+    cartonCount: 500,
+    latestArrivalDate: "2026-10-06",
+    paymentTerms: "30 days net after invoice",
+    benchmarkRateUsd: 2800,
+    typicalTransitDays: "30–33 days",
+    competingQuotes: [
+      {
+        vendor: "OceanLine Forwarding",
+        amountUsd: 2650,
+        allIn: true,
+        transitDays: 32,
+        freeDays: 7,
+        validityDays: 14,
+      },
+      {
+        vendor: "TransGlobal Cargo",
+        amountUsd: 2400,
+        allIn: false,
+        extras: "destination THC USD 280 and documentation USD 95",
+        transitDays: 30,
+        freeDays: 5,
+      },
+    ],
+    specialRequirements: [],
+  },
   {
     id: "herbal-drops-1",
     mode: "transport",
