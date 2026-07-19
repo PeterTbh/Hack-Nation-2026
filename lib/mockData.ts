@@ -58,6 +58,15 @@ export const productSpecs: ProductSpec[] = [
     cargoValueEur: 18500,
     readyDate: "2026-08-04",
     incoterm: "FCA",
+    // Live-call context so Emma is available on this example too — the
+    // curated report below still provides the comparison paths.
+    clientName: "VitaBotanics GmbH",
+    counterpartyName: "OceanLine Forwarding",
+    counterpartyType: "freight forwarder",
+    cargoDescription: "herbal immunity drops in glass bottles, food-grade, non-hazardous",
+    paymentTerms: "30 days net after invoice",
+    benchmarkRateUsd: 2400,
+    typicalTransitDays: "3–5 days",
     specialRequirements: [
       "Fragile — glass bottles",
       "Temperature range 5–25°C",
@@ -517,90 +526,71 @@ function roundTo(n: number, step = 5): number {
   return Math.round(n / step) * step
 }
 
-const TRUCKING_COS = ["Meridian Overland", "CrossPoint Haulage", "Iron Route Logistics", "Vantage Ground Transport"]
-const OCEAN_COS = ["Blue Horizon Shipping", "Continental Ocean Lines", "Pacific Gate Carriers"]
-const AIR_COS = ["Skyway Cargo Partners", "Falcon Air Logistics", "Nimbus Air Freight"]
-const CUSTOMS_COS = ["ClearPath Customs Brokers", "Harbor Gate Compliance", "Meridian Customs Advisory"]
-const WAREHOUSE_COS = ["Nexus Distribution Center", "Anchor Point Warehousing"]
-const LASTMILE_COS = ["CityLine Final Mile", "Metro Direct Delivery"]
+// Comparison quotes are door-to-door offers from freight forwarders /
+// intermediaries who organize the whole A→B move — the counterparty type the
+// live agent negotiates with, so the comparison is like-for-like.
+const FORWARDER_COS = [
+  "Meridian Freight Solutions",
+  "CrossBridge Global Forwarding",
+  "HarborLink Logistics",
+  "Vantage Cargo Partners",
+  "TransContinental Freight Services",
+  "BlueRoute Forwarding Group",
+  "AtlasGate Logistics",
+]
+
+const SERVICE_FLAVORS = ["standard service", "consolidated service", "priority service"]
 
 const LEVERS = [
-  "Beat a competing quote from another carrier",
-  "Committed to a longer contract for a lower rate",
-  "Bundled with an existing route for shared capacity",
-  "Matched a rival broker's rate after pushback",
-  "Requested an off-peak / non-priority slot discount",
+  "Beat a competing forwarder's all-in quote",
+  "Bundled into an existing weekly consignment on this lane",
+  "Documentation fee dropped after pushback",
+  "Signalled a recurring lane for a lower rate",
 ]
 
-const RED_FLAGS = [
-  "Fee was not disclosed until the second call",
-  "Verbal surcharge not yet reflected in the written contract",
-  "Storage/demurrage terms escalate quickly without advance notice",
-  "Broker requested an atypical upfront deposit",
+// The one deliberately-suspicious quote every report carries: far below the
+// rest, which in this market means hidden charges — not a bargain.
+export const SUSPICIOUS_LOW_FLAG =
+  "Quote is far below every other offer for this shipment — in this market that usually means hidden surcharges or rolled cargo, not a bargain. Treat as suspicious."
+
+const QUOTE_POOL = [
+  "\"That's our all-in door-to-door number — pickup, main leg, and delivery included.\"",
+  "\"We run this lane regularly, so I can give you a package rate.\"",
+  "\"Base rate plus our standard surcharges, nothing hidden on top.\"",
+  "\"If you can be flexible on the pickup week, that's the rate I can hold.\"",
 ]
 
-const QUOTE_POOL: Record<string, string[]> = {
-  inland_trucking: [
-    "\"We can slot your pallets into a route we already run this week.\"",
-    "\"Base rate plus fuel surcharge, that's our all-in number.\"",
-  ],
-  ocean_freight: [
-    "\"Container space is tight this month, but I can offer you a shared-load rate.\"",
-    "\"Bunker adjustment moves monthly, everything else is locked in.\"",
-  ],
-  air_freight: [
-    "\"If you need it there fast, this is the rate — space is confirmed today.\"",
-    "\"Fuel and security surcharge are the only variables here.\"",
-  ],
-  customs_brokerage: [
-    "\"Standard declaration plus classification review, nothing unusual on this one.\"",
-    "\"I'll bundle the paperwork fees since you're already a client.\"",
-  ],
-  warehousing: [
-    "\"Cross-dock handling is flat, storage kicks in after the first two days.\"",
-    "\"We can hold it short-term while the onward leg is arranged.\"",
-  ],
-  last_mile_delivery: [
-    "\"Ground floor delivery, appointment booking included.\"",
-    "\"Off-peak slot saves you a bit versus a fixed appointment window.\"",
-  ],
-}
-
-function buildSyntheticNode(
+function buildForwarderQuote(
   rng: () => number,
-  nodeType: CallResult["nodeType"],
   counterparty: string,
-  baseAmount: number,
-  primaryLabel: string,
+  totalTarget: number,
   id: string
 ): CallResult {
-  const totalPrice = roundTo(baseAmount * (0.9 + rng() * 0.2))
-  const primaryAmount = roundTo(totalPrice * 0.82)
-  const surcharge = totalPrice - primaryAmount
+  const totalPrice = roundTo(totalTarget)
+  const baseAmount = roundTo(totalPrice * (0.72 + rng() * 0.08))
+  const fuelAmount = roundTo(totalPrice * (0.1 + rng() * 0.05))
+  const handlingAmount = totalPrice - baseAmount - fuelAmount
 
   let initialPrice = totalPrice
   let leverUsed = "None — accepted standard published rate"
-  const wasNegotiated = rng() < 0.6
-  if (wasNegotiated) {
-    const discount = 0.06 + rng() * 0.1
+  if (rng() < 0.6) {
+    const discount = 0.05 + rng() * 0.08
     initialPrice = roundTo(totalPrice / (1 - discount))
     leverUsed = pick(rng, LEVERS)
   }
 
-  const quotes = [...(QUOTE_POOL[nodeType] ?? [])]
-  const transcriptQuotes = quotes.length ? [pick(rng, quotes)] : []
-
   return {
     id,
-    nodeType,
+    nodeType: "ocean_freight",
     counterparty,
     status: "done",
     outcome: "quote",
     totalPrice,
     currency: "EUR",
     lineItems: [
-      { label: primaryLabel, amount: primaryAmount, included: true },
-      { label: "Fuel / handling surcharge", amount: surcharge, included: true },
+      { label: "Door-to-door base rate", amount: baseAmount, included: true },
+      { label: "Fuel & carrier surcharges", amount: fuelAmount, included: true },
+      { label: "Handling & documentation", amount: handlingAmount, included: true },
     ],
     validityDays: 10,
     binding: true,
@@ -610,95 +600,58 @@ function buildSyntheticNode(
       finalPrice: totalPrice,
       leverUsed,
     },
-    transcriptQuotes,
+    transcriptQuotes: [pick(rng, QUOTE_POOL)],
   }
-}
-
-function buildTransportPaths(rng: () => number, spec: ProductSpec): SupplyChainPath[] {
-  const truckingBase = 350 + spec.weightKg * 0.85 + spec.palletCount * 35
-  const oceanBase = 900 + spec.weightKg * 0.55 + spec.cargoValueEur * 0.004
-  const airBase = 1800 + spec.weightKg * 1.6 + spec.cargoValueEur * 0.01
-  const customsBase = 220 + spec.cargoValueEur * 0.0035
-  const warehouseBase = 180 + spec.palletCount * 25
-  const lastMileBase = 300 + spec.palletCount * 15
-
-  return [
-    {
-      // A pure point-to-point road route — always a sensible option
-      // regardless of whether origin/destination are ports, inland cities,
-      // or anything in between.
-      id: "synthetic-road",
-      label: "Direct Road Freight",
-      recommended: false,
-      landedCostEur: 0,
-      nodes: [
-        buildSyntheticNode(rng, "inland_trucking", pick(rng, TRUCKING_COS), truckingBase * 1.8, "Direct linehaul", "syn-road-1"),
-        buildSyntheticNode(rng, "customs_brokerage", pick(rng, CUSTOMS_COS), customsBase * 0.6, "Border customs declaration", "syn-road-2"),
-      ],
-    },
-    {
-      id: "synthetic-standard",
-      label: "Standard Freight Route",
-      recommended: false,
-      landedCostEur: 0,
-      nodes: [
-        buildSyntheticNode(rng, "inland_trucking", pick(rng, TRUCKING_COS), truckingBase, "Linehaul", "syn-std-1"),
-        buildSyntheticNode(rng, "ocean_freight", pick(rng, OCEAN_COS), oceanBase, "Long-haul freight base rate", "syn-std-2"),
-        buildSyntheticNode(rng, "customs_brokerage", pick(rng, CUSTOMS_COS), customsBase, "Import declaration", "syn-std-3"),
-      ],
-    },
-    {
-      id: "synthetic-consolidated",
-      label: "Consolidated Freight Route",
-      recommended: false,
-      landedCostEur: 0,
-      nodes: [
-        buildSyntheticNode(rng, "inland_trucking", pick(rng, TRUCKING_COS), truckingBase * 0.88, "Shared-load linehaul", "syn-con-1"),
-        buildSyntheticNode(rng, "warehousing", pick(rng, WAREHOUSE_COS), warehouseBase, "Cross-dock handling", "syn-con-2"),
-        buildSyntheticNode(rng, "ocean_freight", pick(rng, OCEAN_COS), oceanBase * 0.8, "Consolidated freight rate", "syn-con-3"),
-        buildSyntheticNode(rng, "customs_brokerage", pick(rng, CUSTOMS_COS), customsBase, "Import declaration", "syn-con-4"),
-      ],
-    },
-    {
-      id: "synthetic-express",
-      label: "Express Air Route",
-      recommended: false,
-      landedCostEur: 0,
-      nodes: [
-        buildSyntheticNode(rng, "inland_trucking", pick(rng, TRUCKING_COS), truckingBase * 0.4, "Airport transfer", "syn-exp-1"),
-        buildSyntheticNode(rng, "air_freight", pick(rng, AIR_COS), airBase, "Air freight base rate", "syn-exp-2"),
-        buildSyntheticNode(rng, "customs_brokerage", pick(rng, CUSTOMS_COS), customsBase, "Import declaration", "syn-exp-3"),
-        buildSyntheticNode(rng, "last_mile_delivery", pick(rng, LASTMILE_COS), lastMileBase, "Final delivery", "syn-exp-4"),
-      ],
-    },
-  ]
 }
 
 export function generateSyntheticReport(spec: ProductSpec): NegotiationReport {
   const seedKey = [spec.productName, spec.origin, spec.destination, spec.weightKg, spec.cargoValueEur, spec.incoterm].join("|")
   const rng = mulberry32(hashSeed(seedKey))
 
-  const paths = buildTransportPaths(rng, spec)
+  // Rough all-in anchor for a door-to-door move of this size. When a live
+  // call happens, mergeLiveResult rescales every quote around the negotiated
+  // price anyway — this anchor only carries the no-call flow.
+  const anchor = 900 + spec.weightKg * 0.75 + spec.palletCount * 40 + spec.cargoValueEur * 0.005
 
-  // Attach exactly one red flag somewhere in the report, so the demo always
-  // has at least one transparency-relevant callout to surface.
-  const flagPathIndex = Math.floor(rng() * paths.length)
-  const flagNodeIndex = Math.floor(rng() * paths[flagPathIndex].nodes.length)
-  paths[flagPathIndex].nodes[flagNodeIndex].redFlags = [pick(rng, RED_FLAGS)]
+  const forwarders = [...FORWARDER_COS]
+  const takeForwarder = () => forwarders.splice(Math.floor(rng() * forwarders.length), 1)[0]
+
+  // Three credible quotes inside a ±15% band, plus one suspiciously low
+  // outlier that gets flagged rather than celebrated. The outlier is never
+  // the first path — that slot is replaced by the live result on merge.
+  const factors = [0.9 + rng() * 0.3, 0.85 + rng() * 0.3, 0.85 + rng() * 0.3, 0.6 + rng() * 0.08]
+  const outlierIndex = 1 + Math.floor(rng() * 3)
+  ;[factors[outlierIndex], factors[3]] = [factors[3], factors[outlierIndex]]
+
+  const paths: SupplyChainPath[] = factors.map((factor, i) => {
+    const name = takeForwarder()
+    const node = buildForwarderQuote(rng, name, anchor * factor, `syn-fwd-${i + 1}`)
+    if (i === outlierIndex) node.redFlags = [SUSPICIOUS_LOW_FLAG]
+    return {
+      id: `synthetic-fwd-${i + 1}`,
+      label: `${name} — ${pick(rng, SERVICE_FLAVORS)}`,
+      recommended: false,
+      landedCostEur: 0,
+      nodes: [node],
+    }
+  })
 
   for (const path of paths) {
     const nodesCost = path.nodes.reduce((sum, n) => sum + n.totalPrice, 0)
     path.landedCostEur = spec.cargoValueEur + nodesCost
   }
 
+  // The suspicious outlier is the cheapest by construction, but a flagged
+  // quote is never the recommendation — cheapest clean offer wins.
   const sorted = [...paths].sort((a, b) => a.landedCostEur - b.landedCostEur)
-  const recommendedPathId = sorted[0].id
+  const clean = sorted.filter((p) => p.nodes.every((n) => n.redFlags.length === 0))
+  const cheapest = clean[0] ?? sorted[0]
+  const nextBest = clean[1] ?? sorted[1]
+  const recommendedPathId = cheapest.id
   for (const path of paths) {
     path.recommended = path.id === recommendedPathId
   }
 
-  const cheapest = sorted[0]
-  const nextBest = sorted[1]
   const savings = nextBest ? nextBest.landedCostEur - cheapest.landedCostEur : 0
 
   return {
@@ -706,8 +659,9 @@ export function generateSyntheticReport(spec: ProductSpec): NegotiationReport {
     paths,
     recommendedPathId,
     executiveSummary:
-      `${cheapest.label} lands at the lowest total cost for ${spec.productName}` +
-      (savings > 0 ? `, roughly €${roundTo(savings)} under the next best option.` : "."),
+      `${cheapest.label} lands at the lowest credible total cost for ${spec.productName}` +
+      (savings > 0 ? `, roughly €${roundTo(savings)} under the next best offer.` : ".") +
+      " One quote came in far below the field and is flagged as suspicious rather than recommended.",
   }
 }
 

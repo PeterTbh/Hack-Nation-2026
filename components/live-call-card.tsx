@@ -5,6 +5,7 @@ import { Mic, MicOff, Phone, PhoneOff } from "lucide-react"
 import { ConversationProvider, useConversation } from "@elevenlabs/react"
 import type { CallResult, ProductSpec } from "@/lib/types"
 import { buildDynamicVariables } from "@/lib/elevenlabs"
+import { savePriorQuote, withPriorQuotes } from "@/lib/prior-quotes"
 import {
   parseFromDataCollection,
   parseQuoteSummary,
@@ -17,6 +18,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { cn } from "@/lib/utils"
 
 type CallPhase = "idle" | "connecting" | "active" | "ended" | "error"
+
+// Wraps client-tool call parameters in the same { key: { value } } shape as
+// ElevenLabs' Data Collection results, so both mechanisms share the one
+// field-mapping function (parseFromDataCollection).
+function toDataCollectionShape(params: Record<string, unknown>): DataCollectionResults {
+  const out: DataCollectionResults = {}
+  for (const [key, value] of Object.entries(params ?? {})) out[key] = { value }
+  return out
+}
 
 interface LiveCallCardProps {
   spec: ProductSpec
@@ -41,17 +51,27 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
   const transcriptRef = useRef<TranscriptLine[]>([])
   const conversationIdRef = useRef<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Set the instant the agent calls the submit_quote_result tool — the
+  // primary path, since it doesn't depend on the agent reciting an exact
+  // spoken summary. When set, finalizeCall's fallbacks are skipped entirely.
+  const toolResultRef = useRef<CallResult | null>(null)
 
-  // The live stream can miss the agent's final message (or the agent can end
-  // the call right as it speaks the summary), so if the local transcript has
-  // no QUOTE SUMMARY we re-fetch the authoritative transcript from ElevenLabs
-  // — it takes a few seconds to become available after the call ends.
+  // One choke point for every extraction path: persists usable quotes for
+  // future calls on the same route before handing the result up.
+  function deliver(result: CallResult) {
+    savePriorQuote(spec, result)
+    setParseState("parsed")
+    onResult(result, transcriptRef.current)
+  }
+
+  // Fallbacks for a call where the tool never fired: the live stream can miss
+  // the agent's final messages, so re-fetch the authoritative transcript from
+  // ElevenLabs — it takes a few seconds to become available after the call.
   async function finalizeCall() {
     const fallbackName = spec.counterpartyName ?? "Vendor"
     const local = parseQuoteSummary(transcriptRef.current, fallbackName)
     if (local) {
-      setParseState("parsed")
-      onResult(local, transcriptRef.current)
+      deliver(local)
       return
     }
 
@@ -78,16 +98,14 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
           }
           const parsed = parseQuoteSummary(lines, fallbackName)
           if (parsed) {
-            setParseState("parsed")
-            onResult(parsed, lines)
+            deliver(parsed)
             return
           }
           const dcResults = data.analysis?.data_collection_results as DataCollectionResults | undefined
           if (dcResults && Object.keys(dcResults).length > 0) {
             const extracted = parseFromDataCollection(dcResults, fallbackName)
             if (extracted) {
-              setParseState("parsed")
-              onResult(extracted, transcriptRef.current)
+              deliver(extracted)
               return
             }
             break // analysis is in and holds no usable quote — stop waiting
@@ -102,6 +120,24 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
   }
 
   const conversation = useConversation({
+    // Primary mechanism: the agent calls this tool at the end of every call
+    // with the structured result — no spoken summary or transcript parsing
+    // needed. Requires the Client Tool "submit_quote_result" to be attached
+    // to the agent (see agent/transport-prompt.md).
+    clientTools: {
+      submit_quote_result: (params: Record<string, unknown>) => {
+        const result = parseFromDataCollection(
+          toDataCollectionShape(params),
+          spec.counterpartyName ?? "Vendor"
+        )
+        if (!result) {
+          return "No usable numbers — gather at least a base rate or a realistic all-in estimate before calling this tool."
+        }
+        toolResultRef.current = result
+        deliver(result)
+        return "Quote result captured."
+      },
+    },
     onMessage: ({ message, source }) => {
       const line: TranscriptLine = { role: source === "ai" ? "agent" : "vendor", text: message }
       transcriptRef.current = [...transcriptRef.current, line]
@@ -114,7 +150,7 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
     onDisconnect: () => {
       setPhase("ended")
       onCallStateChange?.(false)
-      void finalizeCall()
+      if (!toolResultRef.current) void finalizeCall()
     },
     onError: (message) => {
       setError(message)
@@ -122,7 +158,7 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
       onCallStateChange?.(false)
       // Guarantee forward progress: without this, a connection error would
       // leave the wrapping step waiting forever for a result that never comes.
-      onResult(null, transcriptRef.current)
+      if (!toolResultRef.current) onResult(null, transcriptRef.current)
     },
   })
 
@@ -143,6 +179,7 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
     setParseState(null)
     transcriptRef.current = []
     conversationIdRef.current = null
+    toolResultRef.current = null
     setTranscript([])
     onCallStateChange?.(true)
     try {
@@ -153,7 +190,9 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
       conversation.startSession({
         conversationToken: body.token,
         connectionType: "webrtc",
-        dynamicVariables: buildDynamicVariables(spec),
+        // Quotes negotiated on earlier calls for this route ride along as
+        // competing quotes — the second call negotiates better-informed.
+        dynamicVariables: buildDynamicVariables(withPriorQuotes(spec)),
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start the call")
@@ -207,10 +246,10 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
               parseState === "parsed" ? "text-brand" : parseState === "pending" ? "text-muted-foreground" : "text-warn"
             )}
           >
-            {parseState === "parsed" && "Call complete — quote summary captured and parsed into the results."}
+            {parseState === "parsed" && "Call complete — structured quote captured into the results."}
             {parseState === "pending" && "Call ended — extracting the quote from the transcript (takes ~10-20s)…"}
             {parseState === "failed" &&
-              "Call ended without a QUOTE SUMMARY — no structured quote could be extracted. You can call again."}
+              "Call ended without a structured quote — nothing could be extracted. You can call again."}
           </p>
         )}
         {error && <p className="text-xs text-destructive">⚠ {error}</p>}

@@ -10,7 +10,7 @@ export function formatMoney(amount: number, currency: string = "EUR"): string {
 
 export const nodeTypeLabels: Record<NodeType, string> = {
   inland_trucking: "Inland Trucking",
-  ocean_freight: "Main Carriage",
+  ocean_freight: "Door-to-Door Freight",
   air_freight: "Air Freight",
   customs_brokerage: "Customs Brokerage",
   warehousing: "Warehousing",
