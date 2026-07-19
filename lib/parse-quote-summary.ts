@@ -182,7 +182,7 @@ export function parseQuoteSummary(
   const totalPrice = baseAmount + surcharges.reduce((sum, item) => sum + item.amount, 0)
 
   const lineItems: LineItem[] = [
-    { label: "Base ocean freight", amount: baseAmount, included: true },
+    { label: "Base freight rate", amount: baseAmount, included: true },
     ...surcharges,
   ]
   if (!isNone(fields["Not included"])) {

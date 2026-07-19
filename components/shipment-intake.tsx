@@ -1,9 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Factory, Truck, Workflow } from "lucide-react"
-import type { CompetingQuote, ContainerType, Incoterm, NegotiationMode, ProductSpec } from "@/lib/types"
-import { modeLabels } from "@/lib/format"
+import type { CompetingQuote, ProductSpec } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,33 +13,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { cn } from "@/lib/utils"
 
-const INCOTERMS: Incoterm[] = ["FOB", "EXW", "DDP"]
-const CONTAINER_TYPES: ContainerType[] = ["20ft", "40ft", "40ft HC", "LCL"]
-const COUNTERPARTY_TYPES = ["freight forwarder", "carrier booking desk", "NVOCC"]
-
-const MODE_OPTIONS: {
-  mode: NegotiationMode
-  icon: typeof Factory
-  description: string
-}[] = [
-  {
-    mode: "sourcing",
-    icon: Factory,
-    description: "Find and negotiate the purchase or production of the product itself.",
-  },
-  {
-    mode: "transport",
-    icon: Truck,
-    description: "Negotiate shipping the product from a known origin to a destination.",
-  },
-  {
-    mode: "sourcing_transport",
-    icon: Workflow,
-    description: "Optimize sourcing and shipping together for total landed cost.",
-  },
-]
+// Fixed for this demo — the agent ("Emma") always calls the same freight
+// forwarder persona, so who to call isn't a user decision.
+const FIXED_COUNTERPARTY_NAME = "OceanLine Forwarding"
+const FIXED_COUNTERPARTY_TYPE = "freight forwarder"
+const FIXED_INCOTERM = "FOB" as const
 
 type QuoteForm = {
   vendor: string
@@ -60,32 +37,16 @@ type FormState = {
   palletCount: string
   cargoValueEur: string
   readyDate: string
-  incoterm: Incoterm
-  productSpecifications: string
-  neededByDate: string
 
-  // transport — live call context
+  // live call context
   clientName: string
-  counterpartyName: string
-  counterpartyType: string
   cargoDescription: string
-  containerType: ContainerType
-  cartonCount: string
   latestArrivalDate: string
   paymentTerms: string
   benchmarkRateUsd: string
   typicalTransitDays: string
   quoteA: QuoteForm
   quoteB: QuoteForm
-}
-
-const EMPTY_QUOTE: QuoteForm = {
-  vendor: "",
-  amountUsd: "",
-  allIn: "all_in",
-  extras: "",
-  transitDays: "",
-  freeDays: "",
 }
 
 // Live-call context is pre-filled with the demo scenario so a run is one
@@ -98,16 +59,9 @@ const EMPTY_FORM: FormState = {
   palletCount: "",
   cargoValueEur: "",
   readyDate: "",
-  incoterm: "FOB",
-  productSpecifications: "",
-  neededByDate: "",
 
   clientName: "Northvolt Trading GmbH",
-  counterpartyName: "OceanLine Forwarding",
-  counterpartyType: "freight forwarder",
   cargoDescription: "",
-  containerType: "40ft",
-  cartonCount: "",
   latestArrivalDate: "",
   paymentTerms: "30 days net after invoice",
   benchmarkRateUsd: "2800",
@@ -143,7 +97,6 @@ function toCompetingQuote(q: QuoteForm): CompetingQuote | null {
 }
 
 export function ShipmentIntake({ onSubmit }: { onSubmit: (spec: ProductSpec) => void }) {
-  const [mode, setMode] = useState<NegotiationMode | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [error, setError] = useState<string | null>(null)
 
@@ -155,24 +108,18 @@ export function ShipmentIntake({ onSubmit }: { onSubmit: (spec: ProductSpec) => 
     setForm((prev) => ({ ...prev, [which]: { ...prev[which], [key]: value } }))
   }
 
-  function reset() {
-    setMode(null)
-    setForm(EMPTY_FORM)
-    setError(null)
-  }
-
   function handleSubmit() {
-    if (!mode) return
+    const missing =
+      !form.productName.trim() ||
+      !form.origin.trim() ||
+      !form.destination.trim() ||
+      !form.weightKg ||
+      !form.palletCount ||
+      !form.cargoValueEur ||
+      !form.readyDate ||
+      !form.clientName.trim()
 
-    const baseMissing = !form.productName.trim() || !form.weightKg || !form.palletCount || !form.cargoValueEur || !form.readyDate
-    const modeMissing =
-      mode === "sourcing"
-        ? !form.productSpecifications.trim() || !form.neededByDate
-        : mode === "transport"
-          ? !form.origin.trim() || !form.destination.trim() || !form.clientName.trim() || !form.counterpartyName.trim()
-          : !form.destination.trim() || !form.productSpecifications.trim()
-
-    if (baseMissing || modeMissing) {
+    if (missing) {
       setError("Please fill in every field before starting the negotiation.")
       return
     }
@@ -188,40 +135,31 @@ export function ShipmentIntake({ onSubmit }: { onSubmit: (spec: ProductSpec) => 
 
     const spec: ProductSpec = {
       id: `custom-${Date.now()}`,
-      mode,
       productName: form.productName.trim(),
+      origin: form.origin.trim(),
+      destination: form.destination.trim(),
       weightKg,
       palletCount,
       cargoValueEur,
       readyDate: form.readyDate,
+      incoterm: FIXED_INCOTERM,
       specialRequirements: [],
-      ...(mode === "transport"
-        ? {
-            origin: form.origin.trim(),
-            destination: form.destination.trim(),
-            incoterm: form.incoterm,
-            clientName: form.clientName.trim(),
-            counterpartyName: form.counterpartyName.trim(),
-            counterpartyType: form.counterpartyType,
-            cargoDescription: form.cargoDescription.trim() || `${form.productName.trim()}, non-hazardous`,
-            containerType: form.containerType,
-            cartonCount: form.cartonCount ? Number(form.cartonCount) : undefined,
-            latestArrivalDate: form.latestArrivalDate || undefined,
-            paymentTerms: form.paymentTerms.trim() || undefined,
-            benchmarkRateUsd: form.benchmarkRateUsd ? Number(form.benchmarkRateUsd) : undefined,
-            typicalTransitDays: form.typicalTransitDays.trim() || undefined,
-            competingQuotes: [toCompetingQuote(form.quoteA), toCompetingQuote(form.quoteB)].filter(
-              (q): q is CompetingQuote => q !== null
-            ),
-          }
-        : mode === "sourcing"
-          ? { productSpecifications: form.productSpecifications.trim(), neededByDate: form.neededByDate }
-          : { destination: form.destination.trim(), productSpecifications: form.productSpecifications.trim() }),
+      clientName: form.clientName.trim(),
+      counterpartyName: FIXED_COUNTERPARTY_NAME,
+      counterpartyType: FIXED_COUNTERPARTY_TYPE,
+      cargoDescription: form.cargoDescription.trim() || `${form.productName.trim()}, non-hazardous`,
+      latestArrivalDate: form.latestArrivalDate || undefined,
+      paymentTerms: form.paymentTerms.trim() || undefined,
+      benchmarkRateUsd: form.benchmarkRateUsd ? Number(form.benchmarkRateUsd) : undefined,
+      typicalTransitDays: form.typicalTransitDays.trim() || undefined,
+      competingQuotes: [toCompetingQuote(form.quoteA), toCompetingQuote(form.quoteB)].filter(
+        (q): q is CompetingQuote => q !== null
+      ),
     }
 
     setError(null)
     onSubmit(spec)
-    reset()
+    setForm(EMPTY_FORM)
   }
 
   return (
@@ -229,196 +167,96 @@ export function ShipmentIntake({ onSubmit }: { onSubmit: (spec: ProductSpec) => 
       <CardHeader>
         <CardTitle className="text-xl">Start a new negotiation</CardTitle>
         <CardDescription>
-          {mode
-            ? mode === "transport"
-              ? "The voice agent opens a real call with this exact context — every number below is what it may honestly use."
-              : "Just the basics — the agent figures out the rest during the calls."
-            : "First, choose what OpenBid should handle for this product."}
+          The voice agent opens a real call with this exact context — every number below is what it
+          may honestly use.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {!mode ? (
-          <div className="grid gap-3 sm:grid-cols-3">
-            {MODE_OPTIONS.map(({ mode: m, icon: Icon, description }) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className="flex flex-col items-start gap-2 rounded-xl border border-border p-4 text-left transition-colors hover:border-brand hover:bg-brand/5"
-              >
-                <Icon className="h-5 w-5 text-brand" />
-                <span className="font-medium">{modeLabels[m]}</span>
-                <span className="text-xs text-muted-foreground">{description}</span>
-              </button>
-            ))}
+        <div className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="productName">Product name</Label>
+            <Input
+              id="productName"
+              value={form.productName}
+              onChange={(e) => update("productName", e.target.value)}
+              placeholder="e.g. Stainless-steel drinking bottles"
+            />
           </div>
-        ) : (
-          <div className="space-y-5">
-            <button
-              type="button"
-              onClick={reset}
-              className="text-xs font-medium text-muted-foreground hover:text-foreground"
-            >
-              ← Change mode ({modeLabels[mode]} selected)
-            </button>
 
-            <div className="grid gap-4">
-              <div className="grid gap-1.5">
-                <Label htmlFor="productName">Product name</Label>
-                <Input
-                  id="productName"
-                  value={form.productName}
-                  onChange={(e) => update("productName", e.target.value)}
-                  placeholder="e.g. Stainless-steel drinking bottles"
-                />
-              </div>
-
-              {mode === "transport" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="origin">Origin port</Label>
-                    <Input
-                      id="origin"
-                      value={form.origin}
-                      onChange={(e) => update("origin", e.target.value)}
-                      placeholder="Port of Shenzhen (Yantian), China"
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="destination">Destination port</Label>
-                    <Input
-                      id="destination"
-                      value={form.destination}
-                      onChange={(e) => update("destination", e.target.value)}
-                      placeholder="Port of Hamburg, Germany"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {mode === "sourcing_transport" && (
-                <div className="space-y-1.5">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="destination">Destination</Label>
-                    <Input
-                      id="destination"
-                      value={form.destination}
-                      onChange={(e) => update("destination", e.target.value)}
-                      placeholder="City or warehouse"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Origin is left open on purpose — OpenBid compares sourcing options and their
-                    shipping as one decision.
-                  </p>
-                </div>
-              )}
-
-              {(mode === "sourcing" || mode === "sourcing_transport") && (
-                <div className="grid gap-1.5">
-                  <Label htmlFor="productSpecifications">Product specifications / requirements</Label>
-                  <Input
-                    id="productSpecifications"
-                    value={form.productSpecifications}
-                    onChange={(e) => update("productSpecifications", e.target.value)}
-                    placeholder="Materials, certifications, packaging, tolerances…"
-                  />
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="weightKg">Weight (kg)</Label>
-                  <Input
-                    id="weightKg"
-                    type="number"
-                    min="0"
-                    value={form.weightKg}
-                    onChange={(e) => update("weightKg", e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="palletCount">Quantity (pallets)</Label>
-                  <Input
-                    id="palletCount"
-                    type="number"
-                    min="0"
-                    value={form.palletCount}
-                    onChange={(e) => update("palletCount", e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="cargoValueEur">
-                    {mode === "transport" ? "Cargo value (€)" : "Target budget (€)"}
-                  </Label>
-                  <Input
-                    id="cargoValueEur"
-                    type="number"
-                    min="0"
-                    value={form.cargoValueEur}
-                    onChange={(e) => update("cargoValueEur", e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="readyDate">
-                    {mode === "sourcing" ? "Target ready date" : "Cargo-ready date"}
-                  </Label>
-                  <Input
-                    id="readyDate"
-                    type="date"
-                    value={form.readyDate}
-                    onChange={(e) => update("readyDate", e.target.value)}
-                  />
-                </div>
-
-                {mode === "transport" && (
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="incoterm">Incoterm</Label>
-                    <Select value={form.incoterm} onValueChange={(v) => update("incoterm", v as Incoterm)}>
-                      <SelectTrigger id="incoterm" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {INCOTERMS.map((term) => (
-                          <SelectItem key={term} value={term}>
-                            {term}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {mode === "sourcing" && (
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="neededByDate">Needed-by date</Label>
-                    <Input
-                      id="neededByDate"
-                      type="date"
-                      value={form.neededByDate}
-                      onChange={(e) => update("neededByDate", e.target.value)}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {mode === "transport" && (
-                <TransportCallContext form={form} update={update} updateQuote={updateQuote} />
-              )}
-
-              {error && <p className={cn("text-sm text-destructive")}>{error}</p>}
-
-              <div className="flex justify-end">
-                <Button size="lg" onClick={handleSubmit}>
-                  Start Negotiation
-                </Button>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="origin">Origin city</Label>
+              <Input
+                id="origin"
+                value={form.origin}
+                onChange={(e) => update("origin", e.target.value)}
+                placeholder="Shenzhen, China"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="destination">Destination city</Label>
+              <Input
+                id="destination"
+                value={form.destination}
+                onChange={(e) => update("destination", e.target.value)}
+                placeholder="Hamburg, Germany"
+              />
             </div>
           </div>
-        )}
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="weightKg">Weight (kg)</Label>
+              <Input
+                id="weightKg"
+                type="number"
+                min="0"
+                value={form.weightKg}
+                onChange={(e) => update("weightKg", e.target.value)}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="palletCount">Quantity (pallets)</Label>
+              <Input
+                id="palletCount"
+                type="number"
+                min="0"
+                value={form.palletCount}
+                onChange={(e) => update("palletCount", e.target.value)}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="cargoValueEur">Cargo value (€)</Label>
+              <Input
+                id="cargoValueEur"
+                type="number"
+                min="0"
+                value={form.cargoValueEur}
+                onChange={(e) => update("cargoValueEur", e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="readyDate">Cargo-ready date</Label>
+            <Input
+              id="readyDate"
+              type="date"
+              value={form.readyDate}
+              onChange={(e) => update("readyDate", e.target.value)}
+            />
+          </div>
+
+          <TransportCallContext form={form} update={update} updateQuote={updateQuote} />
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          <div className="flex justify-end">
+            <Button size="lg" onClick={handleSubmit}>
+              Start Negotiation
+            </Button>
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
@@ -469,32 +307,7 @@ function TransportCallContext({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
-        <div className="grid gap-1.5">
-          <Label htmlFor="containerType">Container</Label>
-          <Select value={form.containerType} onValueChange={(v) => update("containerType", v as ContainerType)}>
-            <SelectTrigger id="containerType" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CONTAINER_TYPES.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c === "LCL" ? "LCL (shared)" : `${c} FCL`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="cartonCount">Cartons (approx.)</Label>
-          <Input
-            id="cartonCount"
-            type="number"
-            min="0"
-            value={form.cartonCount}
-            onChange={(e) => update("cartonCount", e.target.value)}
-          />
-        </div>
+      <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-1.5">
           <Label htmlFor="latestArrivalDate">Latest arrival</Label>
           <Input
@@ -511,37 +324,6 @@ function TransportCallContext({
             value={form.paymentTerms}
             onChange={(e) => update("paymentTerms", e.target.value)}
           />
-        </div>
-      </div>
-
-      <SectionHeading
-        title="Who to call"
-        hint="The vendor the agent negotiates with on the live call."
-      />
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="grid gap-1.5">
-          <Label htmlFor="counterpartyName">Vendor name</Label>
-          <Input
-            id="counterpartyName"
-            value={form.counterpartyName}
-            onChange={(e) => update("counterpartyName", e.target.value)}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="counterpartyType">Vendor type</Label>
-          <Select value={form.counterpartyType} onValueChange={(v) => update("counterpartyType", v)}>
-            <SelectTrigger id="counterpartyType" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {COUNTERPARTY_TYPES.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       </div>
 

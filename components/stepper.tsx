@@ -2,8 +2,9 @@ import { cn } from "@/lib/utils"
 
 const STEPS = [
   { key: "select", label: "1. Select Product" },
-  { key: "live", label: "2. Live Negotiation" },
-  { key: "results", label: "3. Results" },
+  { key: "live-call", label: "2. Live Call" },
+  { key: "negotiating", label: "3. Negotiating" },
+  { key: "results", label: "4. Results" },
 ] as const
 
 export type StepKey = (typeof STEPS)[number]["key"]

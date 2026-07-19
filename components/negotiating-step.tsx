@@ -3,12 +3,11 @@
 import { useEffect, useState } from "react"
 import type { CallResult, NegotiationReport } from "@/lib/types"
 import { formatMoney, nodeTypeLabels } from "@/lib/format"
-import { mergeLiveResult } from "@/lib/merge-live-result"
 import { useCountdownPrice } from "@/hooks/use-countdown-price"
+import { LiveResultSummary } from "@/components/live-result-summary"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { LiveCallCard } from "@/components/live-call-card"
 import { cn } from "@/lib/utils"
 
 type SimStatus = "calling" | "negotiating" | "done"
@@ -45,59 +44,36 @@ function useSimulatedCalls(nodeIds: string[]) {
   return stages
 }
 
-export function LiveView({
+export function NegotiatingStep({
   report,
   onComplete,
 }: {
   report: NegotiationReport
-  onComplete: (finalReport: NegotiationReport) => void
+  onComplete: () => void
 }) {
   const spec = report.productSpec
-  // A real ElevenLabs call is available for transport shipments that carry
-  // the live-call context (who to call). Other nodes stay simulated for now.
-  const liveCapable = spec.mode === "transport" && !!spec.counterpartyName
-  const [liveResult, setLiveResult] = useState<CallResult | null>(null)
-  const [callInProgress, setCallInProgress] = useState(false)
-
-  // Simulated nodes: when a live call covers the ocean leg, drop the mocked
-  // ocean_freight card from the first path so the two don't compete visually.
   const allNodes = report.paths.flatMap((p) => p.nodes)
-  const firstOceanId = liveCapable
-    ? report.paths.find((p) => p.nodes.some((n) => n.nodeType === "ocean_freight"))?.nodes.find((n) => n.nodeType === "ocean_freight")?.id
-    : undefined
-  const nodes = allNodes.filter((n) => n.id !== firstOceanId)
+  // The live-negotiated node (if any) was already merged into the report and
+  // is shown once, pinned above — the remaining nodes animate as simulated
+  // calls that build on top of it.
+  const liveNode = allNodes.find((n) => n.live)
+  const nodes = allNodes.filter((n) => !n.live)
   const stages = useSimulatedCalls(nodes.map((n) => n.id))
   const allDone = stages.every((s) => s === "done")
   const doneCount = stages.filter((s) => s === "done").length
 
-  const scopeLabel =
-    spec.mode === "sourcing"
-      ? "candidate suppliers"
-      : spec.mode === "sourcing_transport"
-        ? "candidate sourcing + transport combinations"
-        : "candidate supply chain paths"
-
-  function handleComplete() {
-    onComplete(liveResult ? mergeLiveResult(report, liveResult) : report)
-  }
-
   return (
     <div className="flex flex-col gap-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Live negotiation calls</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Negotiating the remaining legs</h1>
         <p className="text-muted-foreground">
-          Calling every provider across {report.paths.length} {scopeLabel} for{" "}
-          {spec.productName} — {doneCount}/{nodes.length} calls complete.
+          {liveNode
+            ? `Using the live quote as reference while the agent negotiates the rest of ${spec.productName}'s route — ${doneCount}/${nodes.length} calls complete.`
+            : `Calling every remaining provider for ${spec.productName} — ${doneCount}/${nodes.length} calls complete.`}
         </p>
       </div>
 
-      {liveCapable && (
-        <LiveCallCard
-          spec={spec}
-          onCallStateChange={setCallInProgress}
-          onResult={(result) => setLiveResult(result)}
-        />
-      )}
+      {liveNode && <LiveResultSummary result={liveNode} label="From your live call" />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {nodes.map((node, i) => (
@@ -106,8 +82,8 @@ export function LiveView({
       </div>
 
       <div className="flex justify-end">
-        <Button size="lg" disabled={!allDone || callInProgress} onClick={handleComplete}>
-          {!allDone ? "Calls in progress…" : callInProgress ? "Live call in progress…" : "View Results"}
+        <Button size="lg" disabled={!allDone} onClick={onComplete}>
+          {allDone ? "View Results" : "Calls in progress…"}
         </Button>
       </div>
     </div>

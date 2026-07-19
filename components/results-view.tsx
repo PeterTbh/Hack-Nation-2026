@@ -10,8 +10,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import type { NegotiationMode, NegotiationReport, SupplyChainPath } from "@/lib/types"
+import type { NegotiationReport, SupplyChainPath } from "@/lib/types"
 import { formatMoney, nodeTypeLabels } from "@/lib/format"
+import { ExecutiveSummary } from "@/components/executive-summary"
 import { LandedCostBreakdown } from "@/components/landed-cost-breakdown"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -41,23 +42,21 @@ export function ResultsView({
     recommended: p.id === report.recommendedPathId,
   }))
   const recommendedPath = report.paths.find((p) => p.id === report.recommendedPathId) ?? sortedPaths[0]
-  const mode = report.productSpec.mode
-  const isTransport = mode === "transport"
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="space-y-1">
+      <div className="space-y-1 print:hidden">
         <h1 className="text-2xl font-semibold tracking-tight">Recommended supply chain</h1>
         <p className="max-w-2xl text-muted-foreground">{report.executiveSummary}</p>
       </div>
 
-      <Card>
+      <ExecutiveSummary report={report} />
+
+      <Card className="print:hidden">
         <CardHeader>
-          <CardTitle>{isTransport ? "Landed cost by path" : "Total cost by option"}</CardTitle>
+          <CardTitle>Landed cost by path</CardTitle>
           <CardDescription>
-            {isTransport
-              ? `Cargo value (${formatMoney(report.productSpec.cargoValueEur)}) plus all logistics fees — itemized per node below.`
-              : "Every negotiated node, itemized per option below — nothing folded into a hidden sum."}
+            {`Cargo value (${formatMoney(report.productSpec.cargoValueEur)}) plus all logistics fees — itemized per node below.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -102,27 +101,27 @@ export function ResultsView({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="print:hidden">
         <CardHeader>
-          <CardTitle>{isTransport ? "How the landed cost is built" : "How the total cost is built"}</CardTitle>
+          <CardTitle>How the landed cost is built</CardTitle>
           <CardDescription>
             {`${recommendedPath.label} (recommended) — every node's negotiated total, summed transparently.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <LandedCostBreakdown path={recommendedPath} cargoValueEur={report.productSpec.cargoValueEur} mode={mode} />
+          <LandedCostBreakdown path={recommendedPath} cargoValueEur={report.productSpec.cargoValueEur} />
         </CardContent>
       </Card>
 
-      <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
+      <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10 print:hidden">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Rank</TableHead>
               <TableHead>Path</TableHead>
               <TableHead>Route</TableHead>
-              {isTransport && <TableHead className="text-right">Logistics cost</TableHead>}
-              <TableHead className="text-right">{isTransport ? "Landed cost" : "Total cost"}</TableHead>
+              <TableHead className="text-right">Logistics cost</TableHead>
+              <TableHead className="text-right">Landed cost</TableHead>
               <TableHead>Evidence</TableHead>
             </TableRow>
           </TableHeader>
@@ -144,12 +143,12 @@ export function ResultsView({
                   <TableCell className="whitespace-normal text-muted-foreground">
                     {path.nodes.map((n) => nodeTypeLabels[n.nodeType]).join(" → ")}
                   </TableCell>
-                  {isTransport && <TableCell className="text-right">{formatMoney(logisticsCost)}</TableCell>}
+                  <TableCell className="text-right">{formatMoney(logisticsCost)}</TableCell>
                   <TableCell className="text-right font-semibold">
                     {formatMoney(path.landedCostEur)}
                   </TableCell>
                   <TableCell>
-                    <EvidenceDialog path={path} cargoValueEur={report.productSpec.cargoValueEur} mode={mode} />
+                    <EvidenceDialog path={path} cargoValueEur={report.productSpec.cargoValueEur} />
                   </TableCell>
                 </TableRow>
               )
@@ -158,7 +157,7 @@ export function ResultsView({
         </Table>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end print:hidden">
         <Button variant="outline" onClick={onRestart}>
           Start over
         </Button>
@@ -170,11 +169,9 @@ export function ResultsView({
 function EvidenceDialog({
   path,
   cargoValueEur,
-  mode,
 }: {
   path: SupplyChainPath
   cargoValueEur: number
-  mode: NegotiationMode
 }) {
   return (
     <Dialog>
@@ -190,7 +187,7 @@ function EvidenceDialog({
         </DialogHeader>
 
         <div className="rounded-lg bg-muted/50 p-3">
-          <LandedCostBreakdown path={path} cargoValueEur={cargoValueEur} mode={mode} />
+          <LandedCostBreakdown path={path} cargoValueEur={cargoValueEur} />
         </div>
 
         <div className="space-y-5">

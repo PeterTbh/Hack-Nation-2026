@@ -4,10 +4,6 @@
 
 export type Incoterm = "EXW" | "FOB" | "CIF" | "DDP" | "FCA"
 
-// What OpenBid should handle for this shipment. Determines which fields are
-// relevant on the intake form and which node types appear downstream.
-export type NegotiationMode = "sourcing" | "transport" | "sourcing_transport"
-
 export type ContainerType = "20ft" | "40ft" | "40ft HC" | "LCL"
 
 // A real quote we already hold from another vendor. Under the agent's honesty
@@ -25,20 +21,18 @@ export interface CompetingQuote {
 
 export interface ProductSpec {
   id: string
-  mode: NegotiationMode
   productName: string
+  origin: string
+  destination: string
   weightKg: number
   palletCount: number
   cargoValueEur: number
   readyDate: string // ISO date
+  incoterm: Incoterm
 
-  // transport only
-  origin?: string
-  destination?: string
-  incoterm?: Incoterm
-
-  // transport only — context the live voice agent needs to open, negotiate,
-  // and red-flag realistically. Optional so curated mock specs stay valid.
+  // Context the live voice agent needs to open, negotiate, and red-flag
+  // realistically. Optional so curated mock specs stay valid without it —
+  // the live call step is simply skipped when counterpartyName is absent.
   clientName?: string
   language?: string
   cargoDescription?: string // incl. non-hazardous confirmation
@@ -52,19 +46,10 @@ export interface ProductSpec {
   typicalTransitDays?: string // e.g. "30–33 days"
   competingQuotes?: CompetingQuote[]
 
-  // sourcing_transport only (final delivery point; origin is left open on
-  // purpose — the agent evaluates sourcing options and their shipping together)
-  // (destination reuses the same field as transport, above)
-
-  // sourcing + sourcing_transport
-  productSpecifications?: string
-  neededByDate?: string // sourcing only
-
   specialRequirements: string[]
 }
 
 export type NodeType =
-  | "sourcing"
   | "inland_trucking"
   | "ocean_freight"
   | "air_freight"

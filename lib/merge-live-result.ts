@@ -7,20 +7,18 @@ import type { CallResult, NegotiationReport, SupplyChainPath } from "@/lib/types
 // Demo-fixed conversion — the agent negotiates in USD, the report sums in EUR.
 export const USD_TO_EUR = 0.92
 
-function recompute(path: SupplyChainPath, cargoValueEur: number, includeCargoValue: boolean): SupplyChainPath {
+function recompute(path: SupplyChainPath, cargoValueEur: number): SupplyChainPath {
   const nodesCost = path.nodes.reduce(
     (sum, n) => sum + (n.currency === "USD" ? Math.round(n.totalPrice * USD_TO_EUR) : n.totalPrice),
     0
   )
-  return { ...path, landedCostEur: includeCargoValue ? cargoValueEur + nodesCost : nodesCost }
+  return { ...path, landedCostEur: cargoValueEur + nodesCost }
 }
 
 export function mergeLiveResult(report: NegotiationReport, live: CallResult): NegotiationReport {
   // A declined call or callback commitment carries no usable price — merging
   // it would rank a €0 leg as the cheapest path. Keep the mock report as-is.
   if (live.outcome !== "quote" || live.totalPrice <= 0) return report
-
-  const includeCargoValue = report.productSpec.mode === "transport"
 
   // Replace the ocean freight node in the first path that has one; other
   // paths keep their mock quotes so the comparison stays multi-path.
@@ -29,9 +27,9 @@ export function mergeLiveResult(report: NegotiationReport, live: CallResult): Ne
     if (!replaced && path.nodes.some((n) => n.nodeType === "ocean_freight")) {
       replaced = true
       const nodes = path.nodes.map((n) => (n.nodeType === "ocean_freight" ? live : n))
-      return recompute({ ...path, nodes }, report.productSpec.cargoValueEur, includeCargoValue)
+      return recompute({ ...path, nodes }, report.productSpec.cargoValueEur)
     }
-    return recompute(path, report.productSpec.cargoValueEur, includeCargoValue)
+    return recompute(path, report.productSpec.cargoValueEur)
   })
 
   // If no path had an ocean leg (e.g. road-only mock report), add the live
@@ -46,8 +44,7 @@ export function mergeLiveResult(report: NegotiationReport, live: CallResult): Ne
           landedCostEur: 0,
           nodes: [live],
         },
-        report.productSpec.cargoValueEur,
-        includeCargoValue
+        report.productSpec.cargoValueEur
       )
     )
   }

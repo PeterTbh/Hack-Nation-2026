@@ -120,6 +120,9 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
       setError(message)
       setPhase("error")
       onCallStateChange?.(false)
+      // Guarantee forward progress: without this, a connection error would
+      // leave the wrapping step waiting forever for a result that never comes.
+      onResult(null, transcriptRef.current)
     },
   })
 
@@ -144,7 +147,7 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
     onCallStateChange?.(true)
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true })
-      const res = await fetch(`/api/conversation-token?mode=${spec.mode}`)
+      const res = await fetch("/api/conversation-token")
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? "Failed to get conversation token")
       conversation.startSession({
@@ -175,8 +178,8 @@ function LiveCallCardInner({ spec, onResult, onCallStateChange }: LiveCallCardPr
           )}
         </CardTitle>
         <CardDescription>
-          Emma negotiates ocean freight with {spec.counterpartyType ?? "the vendor"} — you answer
-          through your microphone as the vendor&apos;s booking desk.
+          Emma negotiates the transport quote with {spec.counterpartyType ?? "the vendor"} — you
+          answer through your microphone as the vendor&apos;s booking desk.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">

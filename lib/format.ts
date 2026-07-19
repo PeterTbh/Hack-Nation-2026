@@ -1,4 +1,4 @@
-import type { NegotiationMode, NodeType } from "@/lib/types"
+import type { NodeType } from "@/lib/types"
 
 export function formatMoney(amount: number, currency: string = "EUR"): string {
   return new Intl.NumberFormat("en-US", {
@@ -9,17 +9,10 @@ export function formatMoney(amount: number, currency: string = "EUR"): string {
 }
 
 export const nodeTypeLabels: Record<NodeType, string> = {
-  sourcing: "Sourcing / Supplier",
   inland_trucking: "Inland Trucking",
-  ocean_freight: "Ocean Freight",
+  ocean_freight: "Main Carriage",
   air_freight: "Air Freight",
   customs_brokerage: "Customs Brokerage",
   warehousing: "Warehousing",
   last_mile_delivery: "Last-Mile Delivery",
-}
-
-export const modeLabels: Record<NegotiationMode, string> = {
-  sourcing: "Sourcing",
-  transport: "Transport",
-  sourcing_transport: "Sourcing + Transport",
 }

@@ -24,27 +24,32 @@ function formatLongDate(iso: string): string {
 
 function containerAndVolume(spec: ProductSpec): string {
   const weight = `~${new Intl.NumberFormat("en-US").format(spec.weightKg)} kg gross`
+  // Container framing only applies when a container type was actually given
+  // (the curated ocean-freight example sets one) — a generic city-to-city
+  // shipment entered via the form has no such assumption baked in.
+  if (!spec.containerType) {
+    return `${spec.palletCount} pallets, ${weight}`
+  }
   const cartons = spec.cartonCount ? `approx. ${spec.cartonCount} cartons, ` : ""
   if (spec.containerType === "LCL") {
     return `LCL shipment, ${cartons}${spec.palletCount} pallets, ${weight}`
   }
-  const box = spec.containerType ?? "40ft"
-  return `1x ${box} standard container (FCL), ${cartons}${weight}`
+  return `1x ${spec.containerType} standard container (FCL), ${cartons}${weight}`
 }
 
 function incotermContext(spec: ProductSpec): string {
   switch (spec.incoterm) {
     case "EXW":
-      return "purchased EXW — we arrange and pay for everything from the seller's door onward, including origin charges, ocean freight, and destination charges"
+      return "purchased EXW — we arrange and pay for everything from the seller's door onward, including origin charges, main transport, and destination charges"
     case "DDP":
       return "selling DDP — we cover the full chain door-to-door including destination customs; quote must reflect that"
     case "CIF":
-      return "purchased CIF — seller covers freight and insurance to destination port; we pay destination charges onward"
+      return "purchased CIF — seller covers freight and insurance to destination; we pay destination charges onward"
     case "FCA":
       return "purchased FCA — seller delivers to the carrier at origin; we pay main carriage and destination charges"
     case "FOB":
     default:
-      return "purchased FOB origin port — freight and origin THC handled by seller; we pay ocean freight and destination charges"
+      return "purchased FOB origin — freight and origin handling charges covered by seller; we pay main transport and destination charges"
   }
 }
 

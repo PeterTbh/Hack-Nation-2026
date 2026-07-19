@@ -10,10 +10,9 @@ export const productSpecs: ProductSpec[] = [
   // paths, and the real negotiated ocean quote is merged in after the call.
   {
     id: "bottles-live-1",
-    mode: "transport",
     productName: "Stainless-Steel Drinking Bottles",
-    origin: "Port of Shenzhen (Yantian), China",
-    destination: "Port of Hamburg, Germany",
+    origin: "Shenzhen, China",
+    destination: "Hamburg, Germany",
     weightKg: 9500,
     palletCount: 20,
     cargoValueEur: 62000,
@@ -51,7 +50,6 @@ export const productSpecs: ProductSpec[] = [
   },
   {
     id: "herbal-drops-1",
-    mode: "transport",
     productName: "Herbal Immunity Drops (Glass Bottles)",
     origin: "Sofia, Bulgaria",
     destination: "Hamburg, Germany",
@@ -66,32 +64,6 @@ export const productSpecs: ProductSpec[] = [
       "Food-grade documentation required",
     ],
   },
-  {
-    id: "cnc-parts-1",
-    mode: "sourcing_transport",
-    productName: "Precision CNC Machine Parts",
-    destination: "Rotterdam, Netherlands",
-    weightKg: 12400,
-    palletCount: 18,
-    cargoValueEur: 210000,
-    readyDate: "2026-08-18",
-    productSpecifications:
-      "Precision-machined aluminum housings, ISO 9001 certified factory, anti-corrosion coating, oversized crates (>2.4m).",
-    specialRequirements: ["Oversized crates (>2.4m)", "Anti-corrosion wrap", "Insurance mandatory"],
-  },
-  {
-    id: "matcha-sourcing-1",
-    mode: "sourcing",
-    productName: "Ceremonial Matcha Powder (Private Label)",
-    weightKg: 500,
-    palletCount: 2,
-    cargoValueEur: 12000,
-    readyDate: "2026-09-10",
-    productSpecifications:
-      "Ceremonial grade, EU-organic certified, stone-ground, custom private-label pouch packaging.",
-    neededByDate: "2026-09-20",
-    specialRequirements: [],
-  },
 ]
 
 function node(partial: Omit<CallResult, "id">, id: string): CallResult {
@@ -103,7 +75,7 @@ function node(partial: Omit<CallResult, "id">, id: string): CallResult {
 // ---------------------------------------------------------------------------
 
 const herbalReport: NegotiationReport = {
-  productSpec: productSpecs[0],
+  productSpec: productSpecs.find((s) => s.id === "herbal-drops-1")!,
   recommendedPathId: "path-groupage-rotterdam",
   executiveSummary:
     "The Rotterdam groupage route lands at €21,050 total cost — €725 cheaper than the next best option and nearly €2,000 under the air freight route. The AI agent negotiated a €330 reduction on the Sofia-Rotterdam linehaul by bundling into an existing weekly route, and flagged an undisclosed storage escalation clause at the Rotterdam cross-dock before accepting.",
@@ -507,591 +479,8 @@ const herbalReport: NegotiationReport = {
   ],
 }
 
-// ---------------------------------------------------------------------------
-// Report 2: Precision CNC Machine Parts — sourcing_transport (Rotterdam only,
-// origin left open — the agent evaluates factories AND their shipping together)
-// ---------------------------------------------------------------------------
-
-const sourcingTransportReport: NegotiationReport = {
-  productSpec: productSpecs[1],
-  recommendedPathId: "path-ocean-lcl",
-  executiveSummary:
-    "Ningbo Metal Fabrication + Ocean LCL lands at €196,740 total cost — €7,060 under the Shenzhen FCL option and €19,410 under sourcing from Vietnam with air freight. The agent evaluated three factories and their onward shipping as one decision, not two separate bids.",
-  paths: [
-    {
-      id: "path-ocean-fcl",
-      label: "Shenzhen Factory + Standard Ocean FCL",
-      recommended: false,
-      landedCostEur: 203800,
-      nodes: [
-        node(
-          {
-            nodeType: "sourcing",
-            counterparty: "Shenzhen Precision Works",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 198500,
-            currency: "EUR",
-            lineItems: [
-              { label: "Unit production cost (full order)", amount: 191000, included: true },
-              { label: "Tooling & QC setup", amount: 7500, included: true },
-            ],
-            validityDays: 30,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 208000,
-              finalPrice: 198500,
-              leverUsed: "Committed to a repeat-order schedule for a lower unit price",
-            },
-            transcriptQuotes: [
-              "\"If you commit to two more runs this year, I can bring the unit price down to €198,500 total.\"",
-            ],
-          },
-          "fcl-0-sourcing"
-        ),
-        node(
-          {
-            nodeType: "inland_trucking",
-            counterparty: "PearlRiver Trucking Co.",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 480,
-            currency: "EUR",
-            lineItems: [
-              { label: "Factory → Yantian port drayage", amount: 420, included: true },
-              { label: "Port entry fee", amount: 60, included: true },
-            ],
-            validityDays: 14,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 480,
-              finalPrice: 480,
-              leverUsed: "None — fixed drayage tariff",
-            },
-            transcriptQuotes: ["\"Drayage is a flat €480, that one doesn't move.\""],
-          },
-          "fcl-1-trucking"
-        ),
-        node(
-          {
-            nodeType: "ocean_freight",
-            counterparty: "OceanLink Shipping",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 4200,
-            currency: "EUR",
-            lineItems: [
-              { label: "Ocean freight base (2x 40ft FCL)", amount: 3200, included: true },
-              { label: "Bunker adjustment factor (BAF)", amount: 420, included: true },
-              { label: "Terminal handling charge — origin", amount: 280, included: true },
-              { label: "Terminal handling charge — destination", amount: 300, included: true },
-            ],
-            validityDays: 21,
-            binding: true,
-            redFlags: ["Destination THC quoted separately, after the contract draft was already signed"],
-            negotiationDelta: {
-              initialPrice: 4950,
-              finalPrice: 4200,
-              leverUsed: "Committed to a 12-month volume contract for a reduced FCL rate",
-            },
-            transcriptQuotes: [
-              "\"Lock in 12 months of volume and I can get you €4,200 instead of the spot rate.\"",
-              "\"Ah, destination THC — that's billed separately at the Rotterdam terminal, around €300.\"",
-            ],
-          },
-          "fcl-2-ocean"
-        ),
-        node(
-          {
-            nodeType: "customs_brokerage",
-            counterparty: "RotterdamGate Customs",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 620,
-            currency: "EUR",
-            lineItems: [
-              { label: "Import declaration", amount: 260, included: true },
-              { label: "HS classification review", amount: 180, included: true },
-              { label: "VAT deferment license fee", amount: 180, included: true },
-            ],
-            validityDays: 30,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 680,
-              finalPrice: 620,
-              leverUsed: "Requested bundled rate across classification + declaration",
-            },
-            transcriptQuotes: ["\"Bundle the classification review with the declaration and I'll knock off €60.\""],
-          },
-          "fcl-3-customs"
-        ),
-      ],
-    },
-    {
-      id: "path-ocean-lcl",
-      label: "Ningbo Factory + Ocean LCL Consolidated",
-      recommended: true,
-      landedCostEur: 196740,
-      nodes: [
-        node(
-          {
-            nodeType: "sourcing",
-            counterparty: "Ningbo Metal Fabrication Co.",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 192000,
-            currency: "EUR",
-            lineItems: [
-              { label: "Unit production cost (full order)", amount: 184500, included: true },
-              { label: "Tooling & QC setup", amount: 7500, included: true },
-            ],
-            validityDays: 30,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 201000,
-              finalPrice: 192000,
-              leverUsed: "Beat the Shenzhen factory's quote by sharing it directly",
-            },
-            transcriptQuotes: [
-              "\"Send me their number and I'll come in under it — €192,000 all-in.\"",
-            ],
-          },
-          "lcl-0-sourcing"
-        ),
-        node(
-          {
-            nodeType: "inland_trucking",
-            counterparty: "PearlRiver Trucking Co.",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 480,
-            currency: "EUR",
-            lineItems: [
-              { label: "Factory → Yantian port drayage", amount: 420, included: true },
-              { label: "Port entry fee", amount: 60, included: true },
-            ],
-            validityDays: 14,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 480,
-              finalPrice: 480,
-              leverUsed: "None — fixed drayage tariff",
-            },
-            transcriptQuotes: ["\"Same drayage rate regardless of FCL or LCL, €480.\""],
-          },
-          "lcl-1-trucking"
-        ),
-        node(
-          {
-            nodeType: "ocean_freight",
-            counterparty: "ConsolFreight Asia",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 3100,
-            currency: "EUR",
-            lineItems: [
-              { label: "LCL freight (per CBM, consolidated)", amount: 2650, included: true },
-              { label: "Bunker adjustment factor (BAF)", amount: 280, included: true },
-              { label: "Documentation fee", amount: 170, included: true },
-            ],
-            validityDays: 21,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 3400,
-              finalPrice: 3100,
-              leverUsed: "Matched a competing per-CBM rate quote from ShareCargo",
-            },
-            transcriptQuotes: [
-              "\"If ShareCargo really quoted that per-CBM rate, I'll match it at €3,100.\"",
-            ],
-          },
-          "lcl-2-ocean"
-        ),
-        node(
-          {
-            nodeType: "warehousing",
-            counterparty: "Maasvlakte Distribution Center",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 540,
-            currency: "EUR",
-            lineItems: [
-              { label: "Deconsolidation handling", amount: 320, included: true },
-              { label: "Re-palletizing", amount: 120, included: true },
-              { label: "Short-term storage (up to 5 days)", amount: 100, included: true },
-            ],
-            validityDays: 10,
-            binding: false,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 540,
-              finalPrice: 540,
-              leverUsed: "None — flat deconsolidation package rate",
-            },
-            transcriptQuotes: ["\"Deconsolidation package is €540 flat, covers up to 5 days storage.\""],
-          },
-          "lcl-3-warehouse"
-        ),
-        node(
-          {
-            nodeType: "customs_brokerage",
-            counterparty: "RotterdamGate Customs",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 620,
-            currency: "EUR",
-            lineItems: [
-              { label: "Import declaration", amount: 260, included: true },
-              { label: "HS classification review", amount: 180, included: true },
-              { label: "VAT deferment license fee", amount: 180, included: true },
-            ],
-            validityDays: 30,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 680,
-              finalPrice: 620,
-              leverUsed: "Same bundled rate as the FCL quote, applied consistently",
-            },
-            transcriptQuotes: ["\"Same bundled classification + declaration rate, €620.\""],
-          },
-          "lcl-4-customs"
-        ),
-      ],
-    },
-    {
-      id: "path-air-expedite",
-      label: "Ho Chi Minh Factory + Air Freight Expedite",
-      recommended: false,
-      landedCostEur: 216150,
-      nodes: [
-        node(
-          {
-            nodeType: "sourcing",
-            counterparty: "Ho Chi Minh Precision Manufacturing",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 205000,
-            currency: "EUR",
-            lineItems: [
-              { label: "Unit production cost (full order)", amount: 197000, included: true },
-              { label: "Tooling & QC setup", amount: 8000, included: true },
-            ],
-            validityDays: 21,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 215000,
-              finalPrice: 205000,
-              leverUsed: "Traded faster turnaround commitment for a lower tooling fee",
-            },
-            transcriptQuotes: [
-              "\"We can turn this around two weeks faster — €205,000 all-in if you confirm this week.\"",
-            ],
-          },
-          "air-cnc-0-sourcing"
-        ),
-        node(
-          {
-            nodeType: "inland_trucking",
-            counterparty: "Mekong Ground Services",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 300,
-            currency: "EUR",
-            lineItems: [{ label: "Factory → Tan Son Nhat Airport drayage", amount: 300, included: true }],
-            validityDays: 14,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 300,
-              finalPrice: 300,
-              leverUsed: "None — fixed short-haul tariff",
-            },
-            transcriptQuotes: ["\"Flat €300 to the airport, no room to move there.\""],
-          },
-          "air-cnc-1-trucking"
-        ),
-        node(
-          {
-            nodeType: "air_freight",
-            counterparty: "IndoChina Air Cargo",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 9800,
-            currency: "EUR",
-            lineItems: [
-              { label: "Air freight base rate", amount: 8600, included: true },
-              { label: "Fuel & security surcharge", amount: 900, included: true },
-              { label: "Oversized crate handling", amount: 300, included: true },
-            ],
-            validityDays: 5,
-            binding: true,
-            redFlags: ["Fuel surcharge index not locked — subject to change until actual departure"],
-            negotiationDelta: {
-              initialPrice: 11200,
-              finalPrice: 9800,
-              leverUsed: "Requested a spot-rate re-quote after showing a competing carrier's offer",
-            },
-            transcriptQuotes: [
-              "\"Show me their number and I'll try to beat it... okay, €9,800.\"",
-              "\"Just know the fuel index isn't locked until you actually depart.\"",
-            ],
-          },
-          "air-cnc-2-airfreight"
-        ),
-        node(
-          {
-            nodeType: "customs_brokerage",
-            counterparty: "Schiphol Import Services",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 640,
-            currency: "EUR",
-            lineItems: [
-              { label: "Import declaration", amount: 280, included: true },
-              { label: "HS classification review", amount: 190, included: true },
-              { label: "VAT deferment license fee", amount: 170, included: true },
-            ],
-            validityDays: 30,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 640,
-              finalPrice: 640,
-              leverUsed: "None — standard airport clearance rate",
-            },
-            transcriptQuotes: ["\"€640 standard clearance, nothing unusual on this shipment.\""],
-          },
-          "air-cnc-3-customs"
-        ),
-        node(
-          {
-            nodeType: "last_mile_delivery",
-            counterparty: "BeNeLux Distribution",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 410,
-            currency: "EUR",
-            lineItems: [
-              { label: "Schiphol → Rotterdam delivery", amount: 360, included: true },
-              { label: "Oversized crate offloading", amount: 50, included: true },
-            ],
-            validityDays: 7,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 460,
-              finalPrice: 410,
-              leverUsed: "Requested off-peak delivery slot discount",
-            },
-            transcriptQuotes: ["\"Off-peak slot brings it down to €410.\""],
-          },
-          "air-cnc-4-lastmile"
-        ),
-      ],
-    },
-  ],
-}
-
-// ---------------------------------------------------------------------------
-// Report 3: Ceremonial Matcha Powder — pure sourcing (no destination/transport
-// negotiated yet; the agent is calling candidate suppliers/factories only)
-// ---------------------------------------------------------------------------
-
-const sourcingReport: NegotiationReport = {
-  productSpec: productSpecs[2],
-  recommendedPathId: "path-uji-collective",
-  executiveSummary:
-    "Uji Green Collective lands at €10,780 total procurement cost — €740 under the Kagoshima co-op and €2,950 under the import broker option. The agent negotiated the private-label packaging fee down separately from the raw matcha cost with each supplier.",
-  paths: [
-    {
-      id: "path-kagoshima-coop",
-      label: "Kagoshima Family Farm Co-op",
-      recommended: false,
-      landedCostEur: 11520,
-      nodes: [
-        node(
-          {
-            nodeType: "sourcing",
-            counterparty: "Kagoshima Family Farm Co-op",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 9800,
-            currency: "EUR",
-            lineItems: [
-              { label: "Ceremonial-grade matcha, stone-ground (500kg)", amount: 9200, included: true },
-              { label: "Organic certification transfer fee", amount: 600, included: true },
-            ],
-            validityDays: 21,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 10600,
-              finalPrice: 9800,
-              leverUsed: "Committed to next season's harvest for a lower per-kg rate",
-            },
-            transcriptQuotes: [
-              "\"If you commit to next season too, I can do €9,800 for this batch.\"",
-            ],
-          },
-          "kag-1-sourcing"
-        ),
-        node(
-          {
-            nodeType: "sourcing",
-            counterparty: "Kyoto Pack & Label Studio",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 1720,
-            currency: "EUR",
-            lineItems: [
-              { label: "Custom private-label pouches (design + print)", amount: 1200, included: true },
-              { label: "Fill & seal run", amount: 520, included: true },
-            ],
-            validityDays: 14,
-            binding: true,
-            redFlags: ["Design proof revisions billed separately after the second round"],
-            negotiationDelta: {
-              initialPrice: 1950,
-              finalPrice: 1720,
-              leverUsed: "Bundled fill-and-seal with the design run for a package rate",
-            },
-            transcriptQuotes: [
-              "\"Bundle the fill-and-seal with the design run and it's €1,720 total.\"",
-              "\"Just know revisions past round two are billed separately.\"",
-            ],
-          },
-          "kag-2-packaging"
-        ),
-      ],
-    },
-    {
-      id: "path-uji-collective",
-      label: "Uji Green Collective",
-      recommended: true,
-      landedCostEur: 10780,
-      nodes: [
-        node(
-          {
-            nodeType: "sourcing",
-            counterparty: "Uji Green Collective",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 9200,
-            currency: "EUR",
-            lineItems: [
-              { label: "Ceremonial-grade matcha, stone-ground (500kg)", amount: 8750, included: true },
-              { label: "Organic certification transfer fee", amount: 450, included: true },
-            ],
-            validityDays: 21,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 9900,
-              finalPrice: 9200,
-              leverUsed: "Matched the Kagoshima co-op's quote and beat it slightly",
-            },
-            transcriptQuotes: [
-              "\"I heard Kagoshima quoted €9,800 — I can do €9,200 for the same volume.\"",
-            ],
-          },
-          "uji-1-sourcing"
-        ),
-        node(
-          {
-            nodeType: "sourcing",
-            counterparty: "Kyoto Pack & Label Studio",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 1580,
-            currency: "EUR",
-            lineItems: [
-              { label: "Custom private-label pouches (design + print)", amount: 1100, included: true },
-              { label: "Fill & seal run", amount: 480, included: true },
-            ],
-            validityDays: 14,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 1580,
-              finalPrice: 1580,
-              leverUsed: "None — same package rate as other suppliers using this studio",
-            },
-            transcriptQuotes: ["\"Same package rate regardless of which farm you go with, €1,580.\""],
-          },
-          "uji-2-packaging"
-        ),
-      ],
-    },
-    {
-      id: "path-import-broker",
-      label: "Direct Import Broker (Pre-Blended)",
-      recommended: false,
-      landedCostEur: 13730,
-      nodes: [
-        node(
-          {
-            nodeType: "sourcing",
-            counterparty: "Marunouchi Trading Co.",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 12400,
-            currency: "EUR",
-            lineItems: [
-              { label: "Pre-blended ceremonial matcha, broker margin included (500kg)", amount: 11600, included: true },
-              { label: "Organic certification transfer fee", amount: 800, included: true },
-            ],
-            validityDays: 10,
-            binding: true,
-            redFlags: ["Broker would not disclose which farms the blend is sourced from"],
-            negotiationDelta: {
-              initialPrice: 13100,
-              finalPrice: 12400,
-              leverUsed: "Pushed back on the broker margin after comparing farm-direct quotes",
-            },
-            transcriptQuotes: [
-              "\"We blend from several partner farms — I can't share which ones, but I can do €12,400.\"",
-            ],
-          },
-          "broker-1-sourcing"
-        ),
-        node(
-          {
-            nodeType: "sourcing",
-            counterparty: "Marunouchi Trading Co.",
-            status: "done",
-            outcome: "quote",
-            totalPrice: 1330,
-            currency: "EUR",
-            lineItems: [{ label: "Private-label packaging (in-house)", amount: 1330, included: true }],
-            validityDays: 10,
-            binding: true,
-            redFlags: [],
-            negotiationDelta: {
-              initialPrice: 1330,
-              finalPrice: 1330,
-              leverUsed: "None — fixed in-house packaging rate",
-            },
-            transcriptQuotes: ["\"Packaging is handled in-house, flat €1,330, no separate studio needed.\""],
-          },
-          "broker-2-packaging"
-        ),
-      ],
-    },
-  ],
-}
-
 export const negotiationReportsBySpecId: Record<string, NegotiationReport> = {
   "herbal-drops-1": herbalReport,
-  "cnc-parts-1": sourcingTransportReport,
-  "matcha-sourcing-1": sourcingReport,
 }
 
 // ---------------------------------------------------------------------------
@@ -1134,8 +523,6 @@ const AIR_COS = ["Skyway Cargo Partners", "Falcon Air Logistics", "Nimbus Air Fr
 const CUSTOMS_COS = ["ClearPath Customs Brokers", "Harbor Gate Compliance", "Meridian Customs Advisory"]
 const WAREHOUSE_COS = ["Nexus Distribution Center", "Anchor Point Warehousing"]
 const LASTMILE_COS = ["CityLine Final Mile", "Metro Direct Delivery"]
-const SUPPLIER_COS = ["Meridian Sourcing Partners", "Northfield Producers Alliance", "Cascade Direct Manufacturing", "Anchor Point Supply Co."]
-const PACKAGING_COS = ["Formwork Packaging Studio", "Crestline Pack & Label"]
 
 const LEVERS = [
   "Beat a competing quote from another carrier",
@@ -1176,10 +563,6 @@ const QUOTE_POOL: Record<string, string[]> = {
   last_mile_delivery: [
     "\"Ground floor delivery, appointment booking included.\"",
     "\"Off-peak slot saves you a bit versus a fixed appointment window.\"",
-  ],
-  sourcing: [
-    "\"We can commit to that volume — here's our best per-unit rate.\"",
-    "\"Match a competing quote and I'll see what I can do on price.\"",
   ],
 }
 
@@ -1241,13 +624,26 @@ function buildTransportPaths(rng: () => number, spec: ProductSpec): SupplyChainP
 
   return [
     {
+      // A pure point-to-point road route — always a sensible option
+      // regardless of whether origin/destination are ports, inland cities,
+      // or anything in between.
+      id: "synthetic-road",
+      label: "Direct Road Freight",
+      recommended: false,
+      landedCostEur: 0,
+      nodes: [
+        buildSyntheticNode(rng, "inland_trucking", pick(rng, TRUCKING_COS), truckingBase * 1.8, "Direct linehaul", "syn-road-1"),
+        buildSyntheticNode(rng, "customs_brokerage", pick(rng, CUSTOMS_COS), customsBase * 0.6, "Border customs declaration", "syn-road-2"),
+      ],
+    },
+    {
       id: "synthetic-standard",
       label: "Standard Freight Route",
       recommended: false,
       landedCostEur: 0,
       nodes: [
         buildSyntheticNode(rng, "inland_trucking", pick(rng, TRUCKING_COS), truckingBase, "Linehaul", "syn-std-1"),
-        buildSyntheticNode(rng, "ocean_freight", pick(rng, OCEAN_COS), oceanBase, "Ocean freight base rate", "syn-std-2"),
+        buildSyntheticNode(rng, "ocean_freight", pick(rng, OCEAN_COS), oceanBase, "Long-haul freight base rate", "syn-std-2"),
         buildSyntheticNode(rng, "customs_brokerage", pick(rng, CUSTOMS_COS), customsBase, "Import declaration", "syn-std-3"),
       ],
     },
@@ -1278,86 +674,11 @@ function buildTransportPaths(rng: () => number, spec: ProductSpec): SupplyChainP
   ]
 }
 
-function buildSourcingPaths(rng: () => number, spec: ProductSpec): SupplyChainPath[] {
-  // cargoValueEur here is the user's target/budget reference, not a fixed
-  // known cost — each supplier path negotiates its own quote around it.
-  const targetUnitCost = Math.max(spec.cargoValueEur, 500)
-  const packagingBase = 150 + spec.palletCount * 90
-
-  const supplierNames = [pick(rng, SUPPLIER_COS), pick(rng, SUPPLIER_COS), pick(rng, SUPPLIER_COS)]
-  const packagingName = pick(rng, PACKAGING_COS)
-
-  return [0.92, 0.85, 1.08].map((factor, i) => ({
-    id: `synthetic-supplier-${i}`,
-    label: `${supplierNames[i]} (Option ${i + 1})`,
-    recommended: false,
-    landedCostEur: 0,
-    nodes: [
-      buildSyntheticNode(rng, "sourcing", supplierNames[i], targetUnitCost * factor, "Product / unit cost", `syn-src-${i}-1`),
-      buildSyntheticNode(rng, "sourcing", packagingName, packagingBase, "Packaging & labeling", `syn-src-${i}-2`),
-    ],
-  }))
-}
-
-function buildSourcingTransportPaths(rng: () => number, spec: ProductSpec): SupplyChainPath[] {
-  const targetUnitCost = Math.max(spec.cargoValueEur, 2000)
-  const truckingBase = 350 + spec.weightKg * 0.85 + spec.palletCount * 35
-  const oceanBase = 900 + spec.weightKg * 0.55 + targetUnitCost * 0.004
-  const airBase = 1800 + spec.weightKg * 1.6 + targetUnitCost * 0.01
-  const customsBase = 220 + targetUnitCost * 0.0035
-
-  const factories = [pick(rng, SUPPLIER_COS), pick(rng, SUPPLIER_COS), pick(rng, SUPPLIER_COS)]
-
-  return [
-    {
-      id: "synthetic-source-standard",
-      label: `${factories[0]} + Standard Ocean Route`,
-      recommended: false,
-      landedCostEur: 0,
-      nodes: [
-        buildSyntheticNode(rng, "sourcing", factories[0], targetUnitCost * 0.95, "Product / unit cost", "syn-st-std-0"),
-        buildSyntheticNode(rng, "inland_trucking", pick(rng, TRUCKING_COS), truckingBase, "Linehaul to port", "syn-st-std-1"),
-        buildSyntheticNode(rng, "ocean_freight", pick(rng, OCEAN_COS), oceanBase, "Ocean freight base rate", "syn-st-std-2"),
-        buildSyntheticNode(rng, "customs_brokerage", pick(rng, CUSTOMS_COS), customsBase, "Import declaration", "syn-st-std-3"),
-      ],
-    },
-    {
-      id: "synthetic-source-consolidated",
-      label: `${factories[1]} + Consolidated Ocean Route`,
-      recommended: false,
-      landedCostEur: 0,
-      nodes: [
-        buildSyntheticNode(rng, "sourcing", factories[1], targetUnitCost * 0.88, "Product / unit cost", "syn-st-con-0"),
-        buildSyntheticNode(rng, "inland_trucking", pick(rng, TRUCKING_COS), truckingBase * 0.88, "Shared-load linehaul", "syn-st-con-1"),
-        buildSyntheticNode(rng, "ocean_freight", pick(rng, OCEAN_COS), oceanBase * 0.82, "Consolidated freight rate", "syn-st-con-2"),
-        buildSyntheticNode(rng, "customs_brokerage", pick(rng, CUSTOMS_COS), customsBase, "Import declaration", "syn-st-con-3"),
-      ],
-    },
-    {
-      id: "synthetic-source-express",
-      label: `${factories[2]} + Express Air Route`,
-      recommended: false,
-      landedCostEur: 0,
-      nodes: [
-        buildSyntheticNode(rng, "sourcing", factories[2], targetUnitCost * 1.05, "Product / unit cost", "syn-st-exp-0"),
-        buildSyntheticNode(rng, "inland_trucking", pick(rng, TRUCKING_COS), truckingBase * 0.4, "Airport transfer", "syn-st-exp-1"),
-        buildSyntheticNode(rng, "air_freight", pick(rng, AIR_COS), airBase, "Air freight base rate", "syn-st-exp-2"),
-        buildSyntheticNode(rng, "customs_brokerage", pick(rng, CUSTOMS_COS), customsBase, "Import declaration", "syn-st-exp-3"),
-      ],
-    },
-  ]
-}
-
 export function generateSyntheticReport(spec: ProductSpec): NegotiationReport {
-  const seedKey = [spec.mode, spec.productName, spec.origin, spec.destination, spec.weightKg, spec.cargoValueEur, spec.incoterm].join("|")
+  const seedKey = [spec.productName, spec.origin, spec.destination, spec.weightKg, spec.cargoValueEur, spec.incoterm].join("|")
   const rng = mulberry32(hashSeed(seedKey))
 
-  const paths =
-    spec.mode === "sourcing"
-      ? buildSourcingPaths(rng, spec)
-      : spec.mode === "sourcing_transport"
-        ? buildSourcingTransportPaths(rng, spec)
-        : buildTransportPaths(rng, spec)
+  const paths = buildTransportPaths(rng, spec)
 
   // Attach exactly one red flag somewhere in the report, so the demo always
   // has at least one transparency-relevant callout to surface.
@@ -1365,13 +686,9 @@ export function generateSyntheticReport(spec: ProductSpec): NegotiationReport {
   const flagNodeIndex = Math.floor(rng() * paths[flagPathIndex].nodes.length)
   paths[flagPathIndex].nodes[flagNodeIndex].redFlags = [pick(rng, RED_FLAGS)]
 
-  // Transport is the only mode where cargoValueEur is a known, already-fixed
-  // value being added to logistics fees. Sourcing and sourcing_transport
-  // negotiate the product's cost itself as a node, so it isn't added twice.
-  const includeCargoValue = spec.mode === "transport"
   for (const path of paths) {
     const nodesCost = path.nodes.reduce((sum, n) => sum + n.totalPrice, 0)
-    path.landedCostEur = includeCargoValue ? spec.cargoValueEur + nodesCost : nodesCost
+    path.landedCostEur = spec.cargoValueEur + nodesCost
   }
 
   const sorted = [...paths].sort((a, b) => a.landedCostEur - b.landedCostEur)

@@ -8,7 +8,7 @@ export function AppHeader() {
   const [darkOk, setDarkOk] = useState(true)
 
   return (
-    <header className="border-b border-border">
+    <header className="border-b border-border print:hidden">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-6 py-4">
         {!lightOk && !darkOk ? (
           <span className="text-lg font-semibold tracking-tight">OpenBid</span>
