@@ -89,6 +89,12 @@ export interface CallResult {
 
   // Populated when the node was negotiated by the live voice agent (parsed
   // from its closing QUOTE SUMMARY); absent on mock/simulated nodes.
+  // totalPrice holds the realistic all-in estimate; maxTotalPrice the
+  // worst-case ceiling the forwarder named.
+  maxTotalPrice?: number
+  maxPriceDrivers?: string // what pushes the total toward the maximum
+  negotiatedImprovement?: string // concrete win (dropped surcharge, faster delivery, …), absent if none
+  alsoMentioned?: string // details the forwarder volunteered (transit time, free days, …)
   transitDays?: number
   nextSailing?: string
   freeDays?: string // e.g. "7 demurrage / 5 detention"

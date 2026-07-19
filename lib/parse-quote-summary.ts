@@ -2,11 +2,12 @@
 // final message on every call into a CallResult the results UI understands.
 // The summary format is mandated by the agent's system prompt:
 //
-//   "QUOTE SUMMARY — Vendor: [name]. Outcome: [itemised_quote /
-//   callback_commitment / declined]. Base rate: [amount]. Surcharges: [...].
-//   Not included: [...]. Transit time: [days]. Next sailing: [date].
-//   Free days: [...]. Payment terms: [...]. Valid until: [date].
-//   Binding: [yes/no]. Missing information: [...]. Red flag: [...]."
+//   "QUOTE SUMMARY — Vendor: [name]. Outcome: [quote / callback_commitment /
+//   declined]. Base rate: [amount]. Typical surcharges: [category and amount,
+//   each]. Realistic all-in: [amount]. Maximum all-in: [amount — driven by
+//   what]. Negotiated improvement: [what got better, or 'none']. Also
+//   mentioned: [volunteered details, or 'none']. Missing information: [...].
+//   Red flag: [yes + reason / no]."
 
 import type { CallOutcome, CallResult, LineItem } from "@/lib/types"
 
@@ -19,14 +20,11 @@ const FIELD_NAMES = [
   "Vendor",
   "Outcome",
   "Base rate",
-  "Surcharges",
-  "Not included",
-  "Transit time",
-  "Next sailing",
-  "Free days",
-  "Payment terms",
-  "Valid until",
-  "Binding",
+  "Typical surcharges",
+  "Realistic all-in",
+  "Maximum all-in",
+  "Negotiated improvement",
+  "Also mentioned",
   "Missing information",
   "Red flag",
 ] as const
@@ -48,12 +46,6 @@ function parseAmount(text: string | undefined): number | null {
   if (!text) return null
   const match = text.replace(/,/g, "").match(/(\d+(?:\.\d+)?)/)
   return match ? Math.round(Number(match[1])) : null
-}
-
-function parseFirstInt(text: string | undefined): number | null {
-  if (!text) return null
-  const match = text.match(/(\d+)/)
-  return match ? Number(match[1]) : null
 }
 
 function isNone(text: string | undefined): boolean {
@@ -86,16 +78,6 @@ function parseSurcharges(text: string | undefined): LineItem[] {
     })
 }
 
-function parseValidityDays(text: string | undefined): number {
-  if (!text) return 14
-  const date = new Date(text)
-  if (!Number.isNaN(date.getTime())) {
-    const days = Math.round((date.getTime() - Date.now()) / 86_400_000)
-    if (days > 0 && days < 365) return days
-  }
-  return parseFirstInt(text) ?? 14
-}
-
 /** Find the QUOTE SUMMARY block in a transcript, searching from the end. */
 export function findQuoteSummary(lines: TranscriptLine[]): string | null {
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -126,22 +108,20 @@ export function parseFromDataCollection(
     return typeof s === "string" ? s.trim() : ""
   }
 
-  if (!str("outcome") && num("base_rate") <= 0) return null
+  if (!str("outcome") && num("base_rate") <= 0 && num("realistic_all_in") <= 0) return null
 
   const currency = /eur|€/i.test(str("currency")) ? "EUR" : "USD"
   const redFlag = str("red_flag")
+  const surcharges = str("typical_surcharges") || str("surcharges")
   const summary =
     `QUOTE SUMMARY — Vendor: ${str("vendor_name") || fallbackCounterparty}. ` +
-    `Outcome: ${str("outcome") || "itemised_quote"}. ` +
+    `Outcome: ${str("outcome") || "quote"}. ` +
     `Base rate: ${currency} ${num("base_rate")}. ` +
-    `Surcharges: ${str("surcharges") || "none"}. ` +
-    `Not included: ${str("not_included") || "none"}. ` +
-    `Transit time: ${num("transit_days") > 0 ? `${num("transit_days")} days` : "none"}. ` +
-    `Next sailing: ${str("next_sailing") || "none"}. ` +
-    `Free days: ${str("free_days") || "none"}. ` +
-    `Payment terms: ${str("payment_terms") || "none"}. ` +
-    `Valid until: ${str("valid_until") || "none"}. ` +
-    `Binding: ${val("binding") === true ? "yes" : "no"}. ` +
+    `Typical surcharges: ${surcharges || "none"}. ` +
+    `Realistic all-in: ${num("realistic_all_in") > 0 ? `${currency} ${num("realistic_all_in")}` : "none"}. ` +
+    `Maximum all-in: ${num("maximum_all_in") > 0 ? `${currency} ${num("maximum_all_in")}${str("maximum_drivers") ? ` — driven by ${str("maximum_drivers")}` : ""}` : "none"}. ` +
+    `Negotiated improvement: ${str("negotiated_improvement") || "none"}. ` +
+    `Also mentioned: ${str("also_mentioned") || "none"}. ` +
     `Missing information: ${str("missing_information") || "none"}. ` +
     `Red flag: ${!redFlag || /^no\b/i.test(redFlag) ? "no" : `yes + ${redFlag}`}.`
 
@@ -153,11 +133,11 @@ export function parseFromDataCollection(
   const initialBase = num("initial_rate")
   const finalBase = num("base_rate")
   if (initialBase > finalBase && finalBase > 0) {
-    const surchargeSum = result.totalPrice - finalBase
+    const delta = initialBase - finalBase
     result.negotiationDelta = {
-      initialPrice: initialBase + surchargeSum,
+      initialPrice: result.totalPrice + delta,
       finalPrice: result.totalPrice,
-      leverUsed: "Live voice negotiation",
+      leverUsed: result.negotiatedImprovement ?? "Live voice negotiation",
     }
   }
   return result
@@ -173,24 +153,31 @@ export function parseQuoteSummary(
   const fields = extractFields(summary)
   // The agent negotiates in whatever currency the vendor quotes; detect EUR
   // from the priced fields, defaulting to USD (the benchmark currency).
-  const pricedText = `${fields["Base rate"] ?? ""} ${fields["Surcharges"] ?? ""}`
+  const pricedText = `${fields["Base rate"] ?? ""} ${fields["Typical surcharges"] ?? ""} ${fields["Realistic all-in"] ?? ""}`
   const currency = /(?:EUR|€|euros?)/i.test(pricedText) && !/(?:USD|\$)/i.test(fields["Base rate"] ?? "")
     ? "EUR"
     : "USD"
   const baseAmount = parseAmount(fields["Base rate"]) ?? 0
-  const surcharges = parseSurcharges(fields["Surcharges"])
-  const totalPrice = baseAmount + surcharges.reduce((sum, item) => sum + item.amount, 0)
+  const surcharges = parseSurcharges(fields["Typical surcharges"])
+  const surchargeSum = surcharges.reduce((sum, item) => sum + item.amount, 0)
+  // The realistic all-in estimate is the number the whole call is after; the
+  // itemised sum only stands in when the forwarder never gave one.
+  const realisticAllIn = isNone(fields["Realistic all-in"]) ? null : parseAmount(fields["Realistic all-in"])
+  const totalPrice = realisticAllIn ?? baseAmount + surchargeSum
+
+  const maxField = isNone(fields["Maximum all-in"]) ? undefined : fields["Maximum all-in"]
+  const maxTotalPrice = parseAmount(maxField) ?? undefined
+  const maxPriceDrivers = maxField?.match(/driven by\s*(.+)$/i)?.[1]?.trim()
+
+  const negotiatedImprovement = isNone(fields["Negotiated improvement"])
+    ? undefined
+    : fields["Negotiated improvement"]
+  const alsoMentioned = isNone(fields["Also mentioned"]) ? undefined : fields["Also mentioned"]
 
   const lineItems: LineItem[] = [
     { label: "Base freight rate", amount: baseAmount, included: true },
     ...surcharges,
   ]
-  if (!isNone(fields["Not included"])) {
-    for (const item of fields["Not included"]!.split(/[,;]/)) {
-      const label = item.trim()
-      if (label) lineItems.push({ label, amount: parseAmount(label) ?? 0, included: false })
-    }
-  }
 
   const redFlagText = fields["Red flag"]
   const redFlags =
@@ -218,19 +205,19 @@ export function parseQuoteSummary(
     totalPrice,
     currency,
     lineItems,
-    validityDays: parseValidityDays(fields["Valid until"]),
-    binding: /^yes/i.test(fields["Binding"] ?? ""),
+    validityDays: 14,
+    binding: false,
     redFlags,
     negotiationDelta: {
       initialPrice: totalPrice,
       finalPrice: totalPrice,
-      leverUsed: "Live voice negotiation",
+      leverUsed: negotiatedImprovement ?? "Live voice negotiation",
     },
     transcriptQuotes: vendorQuotes,
-    transitDays: parseFirstInt(fields["Transit time"]) ?? undefined,
-    nextSailing: isNone(fields["Next sailing"]) ? undefined : fields["Next sailing"],
-    freeDays: isNone(fields["Free days"]) ? undefined : fields["Free days"],
-    paymentTerms: isNone(fields["Payment terms"]) ? undefined : fields["Payment terms"],
+    maxTotalPrice,
+    maxPriceDrivers,
+    negotiatedImprovement,
+    alsoMentioned,
     missingInformation,
     live: true,
   }

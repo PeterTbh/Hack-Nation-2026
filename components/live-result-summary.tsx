@@ -23,8 +23,10 @@ export function LiveResultSummary({
   }
 
   const key = [
-    result.transitDays ? `${result.transitDays} days transit` : null,
-    result.nextSailing ? `next sailing ${result.nextSailing}` : null,
+    result.maxTotalPrice
+      ? `up to ${formatMoney(result.maxTotalPrice, result.currency)} worst case${result.maxPriceDrivers ? ` (${result.maxPriceDrivers})` : ""}`
+      : null,
+    result.alsoMentioned ?? null,
   ]
     .filter(Boolean)
     .join(" · ")
@@ -40,8 +42,12 @@ export function LiveResultSummary({
       </div>
       <p className="mt-2 text-3xl font-semibold tabular-nums">
         {formatMoney(result.totalPrice, result.currency)}
+        <span className="ml-2 text-sm font-normal text-muted-foreground">realistic all-in</span>
       </p>
       {key && <p className="mt-1 text-xs text-muted-foreground">{key}</p>}
+      {result.negotiatedImprovement && (
+        <p className="mt-2 text-xs text-brand">✓ Negotiated: {result.negotiatedImprovement}</p>
+      )}
       {result.redFlags.length > 0 && (
         <p className="mt-2 text-xs text-destructive">⚠ {result.redFlags[0]}</p>
       )}

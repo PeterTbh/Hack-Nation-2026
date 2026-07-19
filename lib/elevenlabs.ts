@@ -10,7 +10,7 @@
 import type { CompetingQuote, ProductSpec } from "@/lib/types"
 
 const DEFAULT_LEVERS =
-  "competing quotes, all-in pricing, surcharge reduction, free days, recurring volume"
+  "dropped or reduced surcharges, cheaper routing, faster delivery, extra free days, competing quotes, recurring volume"
 
 function formatUsd(amount: number): string {
   return `USD ${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(amount)}`
